@@ -110,8 +110,11 @@ function migrate(db) {
       UNIQUE(transaction_id)
     );
 
+    -- Dedupe by simplefin_txn_id (was previously the natural key).
+    -- Drop the old index if it exists with a different definition, then recreate.
+    DROP INDEX IF EXISTS idx_txn_dedupe;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_txn_dedupe
-      ON transactions(account_id, posted, amount, description);
+      ON transactions(simplefin_txn_id) WHERE simplefin_txn_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS sync_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
