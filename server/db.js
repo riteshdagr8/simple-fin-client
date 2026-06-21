@@ -169,6 +169,24 @@ function migrate(db) {
     db.exec("ALTER TABLE user_settings ADD COLUMN ui_theme TEXT DEFAULT 'minimal'");
   }
 
+  // Per-user email summary settings
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_summary_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      frequency_hours INTEGER NOT NULL DEFAULT 6,
+      include_total_balance INTEGER NOT NULL DEFAULT 1,
+      include_per_account_balance INTEGER NOT NULL DEFAULT 1,
+      include_per_category_spending INTEGER NOT NULL DEFAULT 1,
+      include_todays_transactions INTEGER NOT NULL DEFAULT 1,
+      include_weeks_transactions INTEGER NOT NULL DEFAULT 1,
+      last_sent_at TEXT,
+      next_send_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
   // Categorize jobs (background LLM categorization tracker)
   db.exec(`
     CREATE TABLE IF NOT EXISTS categorize_jobs (

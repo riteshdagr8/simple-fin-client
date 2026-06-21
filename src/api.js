@@ -115,4 +115,7 @@ export const api = {
   getSyncSettings: () => request('/settings/sync'),
   saveSyncSettings: (data) =>
     request('/settings/sync', { method: 'PUT', body: JSON.stringify(data) }),
+  getEmailSummarySettings: () => request('/settings/email-summary'),
+  saveEmailSummarySettings: (data) =>
+    request('/settings/email-summary', { method: 'PUT', body: JSON.stringify(data) }),
 };

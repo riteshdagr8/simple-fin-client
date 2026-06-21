@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initScheduler } from './scheduler.js';
+import { initScheduler, initEmailSummaryScheduler } from './scheduler.js';
 import { authMiddleware, optionalAuth } from './middleware/auth.js';
 import connectionsRouter from './routes/connections.js';
 import accountsRouter from './routes/accounts.js';
@@ -167,4 +167,5 @@ app.get('/{*rest}', (req, res) => {
 app.listen(PORT, () => {
   console.log(`FinApp server running on http://localhost:${PORT}`);
   initScheduler();
+  initEmailSummaryScheduler();
 });

@@ -29,6 +29,17 @@ export default function Settings({ setTheme }) {
 
   const [theme, setLocalTheme] = useState('minimal');
 
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [emailFrequency, setEmailFrequency] = useState(6);
+  const [emailIncTotal, setEmailIncTotal] = useState(true);
+  const [emailIncAccounts, setEmailIncAccounts] = useState(true);
+  const [emailIncCategories, setEmailIncCategories] = useState(true);
+  const [emailIncToday, setEmailIncToday] = useState(true);
+  const [emailIncWeek, setEmailIncWeek] = useState(true);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [emailLastSent, setEmailLastSent] = useState(null);
+
   useEffect(() => {
     api.getLLMConfig()
       .then(cfg => {
@@ -45,6 +56,18 @@ export default function Settings({ setTheme }) {
       .then(s => {
         setSyncInterval(s.sync_interval_hours || 2);
         setLocalTheme(s.ui_theme || 'minimal');
+      })
+      .catch(() => {});
+    api.getEmailSummarySettings()
+      .then(es => {
+        setEmailEnabled(!!es.enabled);
+        setEmailFrequency(es.frequency_hours || 6);
+        setEmailIncTotal(!!es.include_total_balance);
+        setEmailIncAccounts(!!es.include_per_account_balance);
+        setEmailIncCategories(!!es.include_per_category_spending);
+        setEmailIncToday(!!es.include_todays_transactions);
+        setEmailIncWeek(!!es.include_weeks_transactions);
+        setEmailLastSent(es.last_sent_at || null);
       })
       .catch(() => {});
   }, []);
@@ -122,6 +145,36 @@ export default function Settings({ setTheme }) {
       setError(err.message);
     } finally {
       setSyncSaving(false);
+    }
+  };
+
+  const handleEmailSave = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (emailEnabled) {
+      const freq = Number(emailFrequency);
+      if (!Number.isInteger(freq) || freq < 1 || freq > 24) {
+        setError('Frequency must be an integer between 1 and 24 hours.');
+        return;
+      }
+    }
+    setEmailSaving(true);
+    try {
+      await api.saveEmailSummarySettings({
+        enabled: !!emailEnabled,
+        frequency_hours: Number(emailFrequency) || 6,
+        include_total_balance: !!emailIncTotal,
+        include_per_account_balance: !!emailIncAccounts,
+        include_per_category_spending: !!emailIncCategories,
+        include_todays_transactions: !!emailIncToday,
+        include_weeks_transactions: !!emailIncWeek,
+      });
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEmailSaving(false);
     }
   };
 
@@ -345,6 +398,90 @@ export default function Settings({ setTheme }) {
         }}>
           Apply Theme
         </button>
+      </div>
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <h2>Email Summary</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>
+          Receive periodic email summaries of your finances. Emails are sent to your account email.
+          {emailLastSent && (
+            <> Last sent: <span style={{ color: 'var(--text)' }}>{new Date(emailLastSent + 'Z').toLocaleString()}</span>.</>
+          )}
+        </p>
+
+        {emailSaved && (
+          <div style={{ background: '#f0fdf4', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
+            Email summary settings saved!
+          </div>
+        )}
+
+        <form onSubmit={handleEmailSave}>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={emailEnabled}
+                onChange={e => setEmailEnabled(e.target.checked)} />
+              <span>Enable email summaries</span>
+            </label>
+          </div>
+
+          {emailEnabled && (
+            <>
+              <div className="form-group">
+                <label>Frequency (hours)</label>
+                <input type="number" min={1} max={24} step={1}
+                  value={emailFrequency}
+                  onChange={e => setEmailFrequency(e.target.value)} />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                  How often to send summaries. Enter a whole number between 1 and 24.
+                  The server checks for due summaries every 5 minutes, so a 1-hour setting
+                  may send up to 5 minutes past the hour.
+                </p>
+              </div>
+
+              <p style={{ fontWeight: 600, margin: '16px 0 8px' }}>Include in summary:</p>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={emailIncTotal}
+                    onChange={e => setEmailIncTotal(e.target.checked)} />
+                  <span>Total balance across all accounts</span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={emailIncAccounts}
+                    onChange={e => setEmailIncAccounts(e.target.checked)} />
+                  <span>Per-account balance breakdown</span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={emailIncCategories}
+                    onChange={e => setEmailIncCategories(e.target.checked)} />
+                  <span>Spending by category</span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={emailIncToday}
+                    onChange={e => setEmailIncToday(e.target.checked)} />
+                  <span>Today's transactions</span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={emailIncWeek}
+                    onChange={e => setEmailIncWeek(e.target.checked)} />
+                  <span>This week's transactions</span>
+                </label>
+              </div>
+            </>
+          )}
+
+          <button type="submit" className="primary" disabled={emailSaving}>
+            {emailSaving ? <><span className="spinner" /> Saving...</> : 'Save Email Settings'}
+          </button>
+        </form>
       </div>
     </div>
   );
