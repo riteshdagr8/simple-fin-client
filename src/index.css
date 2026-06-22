@@ -212,7 +212,9 @@ input:focus, select:focus {
 }
 
 /* Checkbox row: label wraps a checkbox + text. Use a class instead of
-   inline display:flex to reliably beat the global label{display:block}. */
+   inline display:flex to reliably beat the global label{display:block}.
+   The input override matters because the global `input { width: 100% }`
+   stretches checkboxes to fill the row. */
 .checkbox-row {
   display: flex !important;
   align-items: center;
@@ -222,6 +224,10 @@ input:focus, select:focus {
   margin-bottom: 4px;
   font-weight: 400;
   text-align: left !important;
+}
+.checkbox-row input[type="checkbox"] {
+  width: auto !important;
+  flex: 0 0 auto;
 }
 
 label {
