@@ -84,11 +84,6 @@ export default function Settings({ setTheme }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    // Only require API key if there isn't one already
-    if (!config?.hasKey && !apiKey.trim()) {
-      setError('API key is required for first-time setup.');
-      return;
-    }
     setError('');
     setSaving(true);
     try {
