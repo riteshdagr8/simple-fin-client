@@ -220,7 +220,12 @@ export default function Settings({ setTheme }) {
           <div className="form-group">
             <label>API Key</label>
             <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-              placeholder={config?.hasKey ? '(unchanged — current key hidden)' : 'Enter your API key'} />
+              placeholder={config?.hasKey ? '••••••••••••' : 'Enter your API key'} />
+            {config?.hasKey && !apiKey && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                A key is saved. Leave blank to keep it, or type a new value to replace.
+              </p>
+            )}
           </div>
 
           <div className="form-group">
