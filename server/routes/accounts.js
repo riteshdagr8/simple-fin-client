@@ -1,7 +1,41 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { getDb } from '../db.js';
 
 const router = Router();
+
+const MAX_IMPORT_ROWS = 10000;
+
+function normalizeDate(input) {
+  if (input == null) return null;
+  const s = String(input).trim();
+  if (!s) return null;
+  // YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const [, y, mo, d] = m;
+    const date = new Date(Date.UTC(+y, +mo - 1, +d));
+    if (isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+  }
+  // MM/DD/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) {
+    const [, mo, d, y] = m;
+    const date = new Date(Date.UTC(+y, +mo - 1, +d));
+    if (isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+function parseAmount(input) {
+  if (input == null || input === '') return NaN;
+  if (typeof input === 'number') return input;
+  const s = String(input).replace(/[$,\s]/g, '');
+  const n = Number(s);
+  return isNaN(n) ? NaN : n;
+}
 
 router.get('/', (req, res) => {
   const db = getDb();
@@ -160,6 +194,77 @@ router.get('/:id/transactions', (req, res) => {
   const count = db.prepare('SELECT COUNT(*) as total FROM transactions WHERE account_id = ?')
     .get(req.params.id);
   res.json({ transactions: txns, total: count.total });
+});
+
+router.post('/:id/transactions/import', (req, res) => {
+  const db = getDb();
+  const { rows } = req.body || {};
+
+  if (!Array.isArray(rows)) {
+    return res.status(400).json({ error: 'rows must be an array' });
+  }
+  if (rows.length === 0) {
+    return res.json({ imported: 0, skipped: 0, errors: [] });
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    return res.status(400).json({ error: `Cannot import more than ${MAX_IMPORT_ROWS} rows at once (got ${rows.length}).` });
+  }
+
+  // Verify account belongs to user
+  const account = db.prepare(`
+    SELECT a.id FROM accounts a
+    JOIN connections c ON c.id = a.connection_id
+    WHERE a.id = ? AND c.user_id = ?
+  `).get(req.params.id, req.user.userId);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  const accountId = account.id;
+
+  const errors = [];
+  const valid = [];
+  rows.forEach((row, idx) => {
+    if (!row || typeof row !== 'object') {
+      errors.push({ row: idx, reason: 'row is not an object' });
+      return;
+    }
+    const posted = normalizeDate(row.posted ?? row.date ?? row.Date);
+    const description = (row.description ?? row.Description ?? '').toString().trim();
+    const amount = parseAmount(row.amount ?? row.Amount);
+    if (!posted) {
+      errors.push({ row: idx, reason: `Invalid date: ${row.posted ?? row.date ?? ''}` });
+      return;
+    }
+    if (!description) {
+      errors.push({ row: idx, reason: 'Description is empty' });
+      return;
+    }
+    if (isNaN(amount)) {
+      errors.push({ row: idx, reason: `Invalid amount: ${row.amount}` });
+      return;
+    }
+    valid.push({ posted, description, amount });
+  });
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO transactions (account_id, simplefin_txn_id, posted, amount, description, raw_data)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  let imported = 0;
+  const insertAll = db.transaction((items) => {
+    for (const item of items) {
+      const hash = crypto.createHash('sha1')
+        .update(`${item.posted}|${item.amount}|${item.description}`)
+        .digest('hex')
+        .slice(0, 16);
+      const sfinId = `import-${accountId}-${hash}`;
+      const result = insert.run(accountId, sfinId, item.posted, item.amount, item.description, null);
+      if (result.changes > 0) imported++;
+    }
+  });
+  insertAll(valid);
+
+  const skipped = valid.length - imported;
+  res.json({ imported, skipped, errors });
 });
 
 export default router;

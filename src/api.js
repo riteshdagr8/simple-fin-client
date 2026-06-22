@@ -58,6 +58,8 @@ export const api = {
     })}`),
   getAccountTransactions: (id, limit = 100, offset = 0) =>
     request(`/accounts/${id}/transactions?limit=${limit}&offset=${offset}`),
+  importAccountTransactions: (id, rows) =>
+    request(`/accounts/${id}/transactions/import`, { method: 'POST', body: JSON.stringify({ rows }) }),
   updateAccountBankName: (id, bank_name) =>
     request(`/accounts/${id}/bank-name`, { method: 'PUT', body: JSON.stringify({ bank_name }) }),
   updateAccountName: (id, name) =>
