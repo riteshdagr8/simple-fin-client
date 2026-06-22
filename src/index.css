@@ -216,10 +216,12 @@ input:focus, select:focus {
 .checkbox-row {
   display: flex !important;
   align-items: center;
+  justify-content: flex-start !important;
   gap: 8px;
   cursor: pointer;
   margin-bottom: 4px;
   font-weight: 400;
+  text-align: left !important;
 }
 
 label {
