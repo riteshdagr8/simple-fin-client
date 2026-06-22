@@ -74,7 +74,7 @@ router.post('/seed', (req, res) => {
   const defaults = [
     { name: 'Groceries', icon: '🛒', color: '#22c55e' },
     { name: 'Dining', icon: '🍽️', color: '#f59e0b' },
-    { name: 'Transport', icon: '🚗', color: '#3b82f6' },
+    { name: 'Insurance', icon: '🛡️', color: '#3b82f6' },
     { name: 'Gas/Auto', icon: '⛽', color: '#0ea5e9' },
     { name: 'Shopping', icon: '🛍️', color: '#ec4899' },
     { name: 'Entertainment', icon: '🎬', color: '#8b5cf6' },
