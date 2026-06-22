@@ -164,16 +164,53 @@ Return: [{"idx":0,"category":"Groceries"},{"idx":1,"category":"Dining"},{"idx":2
       'i must follow', 'i should output', 'i need to output',
       'step by step', "let's ", 'going through',
       'looking at', 'based on the', 'the description suggests',
+      'we need to', 'we are to', 'we should', 'to categorize',
     ];
+
+    // Try to extract a JSON array from arbitrary content. Handles:
+    //  - clean JSON:    '[{"a":1}]'
+    //  - prose prefix:  'Let me think...\n[{"a":1}]'
+    //  - prose suffix:  '[{"a":1}]\nDone.'
+    //  - code fences:   '```json\n[{"a":1}]\n```'
+    //  - markdown:      'Here you go: [{"a":1}]'
+    // Returns { hasJson, proseBefore, proseAfter }.
+    const inspectJson = (content) => {
+      if (!content || typeof content !== 'string') {
+        return { hasJson: false, proseBefore: false, proseAfter: false };
+      }
+      // Strip code fences if present
+      let stripped = content.trim();
+      const fenceMatch = stripped.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
+      if (fenceMatch) stripped = fenceMatch[1].trim();
+      // Look for the first '[' and last ']'
+      const firstBracket = stripped.indexOf('[');
+      const lastBracket = stripped.lastIndexOf(']');
+      if (firstBracket === -1 || lastBracket === -1 || lastBracket < firstBracket) {
+        return { hasJson: false, proseBefore: false, proseAfter: false };
+      }
+      const candidate = stripped.slice(firstBracket, lastBracket + 1);
+      let parsed;
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        return { hasJson: false, proseBefore: false, proseAfter: false };
+      }
+      if (!Array.isArray(parsed)) {
+        return { hasJson: false, proseBefore: false, proseAfter: false };
+      }
+      const proseBefore = stripped.slice(0, firstBracket).trim().length > 0;
+      const proseAfter = stripped.slice(lastBracket + 1).trim().length > 0;
+      return { hasJson: true, proseBefore, proseAfter };
+    };
 
     const analyzeResponse = (resp, testName, expectedLength) => {
       const fullText = (resp.content + ' ' + resp.reasoning).toLowerCase();
       const hasReasoning = reasoningPhrases.some(p => fullText.includes(p));
       const echoes = resp.content.toLowerCase().includes('respond with only') ||
                      resp.content.toLowerCase().includes('return only');
-      const hasJson = resp.content.trim().startsWith('[') && resp.content.trim().endsWith(']');
+      const json = inspectJson(resp.content);
       const cutOff = resp.finish_reason === 'length';
-      return { resp, hasReasoning, echoes, hasJson, cutOff, fullText };
+      return { resp, hasReasoning, echoes, json, cutOff, fullText };
     };
 
     const simpleAnalysis = analyzeResponse(simple, 'simple', 10);
@@ -198,21 +235,27 @@ Return: [{"idx":0,"category":"Groceries"},{"idx":1,"category":"Dining"},{"idx":2
     };
 
     // Determine verdict
-    // The complex test is the real signal — if it doesn't return JSON, the model is unsuitable.
-    if (!complexAnalysis.hasJson && (complexAnalysis.hasReasoning || complexAnalysis.cutOff)) {
-      result.isReasoning = true;
-      result.verdict = 'Model thinks out loud on complex tasks. It returned reasoning instead of the expected JSON array. This is a reasoning model that will not produce structured output for categorization.';
-    } else if (!complexAnalysis.hasJson && complexAnalysis.echoes) {
-      result.isBroken = true;
-      result.verdict = 'Model is echoing the prompt instead of following instructions. Not suitable for structured output.';
-    } else if (complexAnalysis.hasJson) {
-      result.verdict = 'Non-reasoning model — it produced a clean JSON array for the categorization test. Should work for transaction categorization.';
-    } else if (complex.content.length === 0) {
+    // The complex test is the real signal — if it doesn't return parseable JSON, the model is unsuitable.
+    // Three states: clean JSON, JSON with prose around it (often a reasoning model paraphrasing the prompt),
+    // or no JSON at all.
+    const j = complexAnalysis.json;
+    if (complex.content.length === 0) {
       result.isReasoning = true;
       result.verdict = 'Model returned empty content on the complex test. Likely a reasoning model that needs more tokens to think AND answer.';
-    } else {
+    } else if (!j.hasJson && (complexAnalysis.hasReasoning || complexAnalysis.cutOff)) {
+      result.isReasoning = true;
+      result.verdict = 'Model thinks out loud on complex tasks. It returned reasoning instead of the expected JSON array. This is a reasoning model that will not produce structured output for categorization.';
+    } else if (!j.hasJson && complexAnalysis.echoes) {
+      result.isBroken = true;
+      result.verdict = 'Model is echoing the prompt instead of following instructions. Not suitable for structured output.';
+    } else if (!j.hasJson) {
       result.isReasoning = true;
       result.verdict = 'Model did not return valid JSON. It produced freeform text instead. This will not work for transaction categorization.';
+    } else if (j.proseBefore || j.proseAfter) {
+      result.isReasoning = true;
+      result.verdict = 'Model returned a JSON array but wrapped it in reasoning prose (e.g., paraphrasing the prompt before answering). The JSON is hidden in the text, so strict parsers will fail. This is a reasoning model that will not produce clean structured output for categorization.';
+    } else {
+      result.verdict = 'Non-reasoning model — it produced a clean JSON array for the categorization test. Should work for transaction categorization.';
     }
 
     if (result.isReasoning) {
