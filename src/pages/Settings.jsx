@@ -100,6 +100,7 @@ export default function Settings({ setTheme }) {
       // Only send apiKey if user typed a new one
       if (apiKey.trim()) payload.apiKey = apiKey.trim();
       await api.saveLLMConfig(payload);
+      setConfig(prev => ({ ...prev, hasKey: true }));
       setSaved(true);
       setApiKey(''); // Clear after successful save
       setCheckResult(null); // Clear any previous check
