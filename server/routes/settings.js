@@ -137,7 +137,9 @@ router.post('/llm/check', async (req, res) => {
     // Test 2: categorization-style request. Use enough transactions and tokens that
     // reasoning models (which spend tokens "thinking" before answering) will be forced
     // to either truncate the JSON or wrap it in prose -- both of which we detect.
-    // 20 transactions, 4000 max_tokens mirrors the shape of a real categorization call.
+    // 50 transactions, 6000 max_tokens -- small enough to be fast, large enough that
+    // a model that "thinks out loud" on complex tasks (like deepseek-v4-flash does
+    // on 200-transaction real calls) will reveal itself.
     const REALISTIC_CATEGORIES = ['Groceries', 'Dining', 'Transport', 'Shopping', 'Other'];
     const REALISTIC_DESCRIPTIONS = [
       'WHOLE FOODS MARKET', 'STARBUCKS COFFEE', 'UBER TRIP', 'AMAZON.COM',
@@ -145,11 +147,19 @@ router.post('/llm/check', async (req, res) => {
       'DOORDASH DELIVERY', 'TARGET STORE', 'WALGREENS PHARMACY', 'LYFT RIDE',
       'CHIPOTLE MEXICAN', 'COSTCO WHOLESALE', 'CVS PHARMACY', 'MCDONALDS',
       'DOMINOS PIZZA', 'BEST BUY', 'KROGER GROCERY', 'PIZZA HUT',
+      'STARBUCKS RESERVE', 'UBER EATS', 'VENMO PAYMENT', 'PAYPAL TRANSFER',
+      'AIRBNB STAY', 'DELTA AIRLINES', 'HILTON HOTEL', 'SHELL OIL',
+      'COMCAST CABLE', 'VERIZON WIRELESS', 'AT&T INTERNET', 'T-MOBILE',
+      'SPOTIFY PREMIUM', 'ADOBE CREATIVE', 'DROPBOX STORAGE', 'ICLOUD STORAGE',
+      'GOOGLE STORAGE', 'OFFICE 365', 'GITHUB SUBSCRIPTION', 'AWS BILLING',
+      'OPENAI API', 'ANTHROPIC API', 'GODADDY DOMAIN', 'CLOUDFLARE',
+      'DIGITALOCEAN', 'HEROKU DYNOS', 'RENT PAYMENT', 'MORTGAGE PAYMENT',
+      'ELECTRIC BILL', 'WATER BILL', 'NATURAL GAS', 'INTERNET PROVIDER',
     ];
     const realisticTxnList = REALISTIC_DESCRIPTIONS
       .map((d, i) => `[${i}] "${d}" (-${(5 + (i * 3) % 80).toFixed(2)})`)
       .join('\n');
-    const categoryPrompt = `Categorize these 20 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
+    const categoryPrompt = `Categorize these 50 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
 
 Categories: ${REALISTIC_CATEGORIES.join(', ')}
 
@@ -162,7 +172,7 @@ Return: [{"idx":0,"category":"Groceries"}, ...]`;
         { role: 'system', content: 'You are a transaction categorizer. Return only JSON arrays.' },
         { role: 'user', content: categoryPrompt },
       ],
-      4000
+      6000
     );
     if (complex.error) {
       return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
@@ -254,6 +264,13 @@ Return: [{"idx":0,"category":"Groceries"}, ...]`;
     if (complex.content.length === 0) {
       result.isReasoning = true;
       result.verdict = 'Model returned empty content on the complex test. Likely a reasoning model that needs more tokens to think AND answer.';
+    } else if (complexAnalysis.cutOff && !j.proseBefore && !j.proseAfter) {
+      // Response was cut off mid-generation (finish_reason === 'length'), meaning
+      // the model used all available tokens. A non-reasoning model that was given
+      // 6000 tokens for 50 transactions would only need ~3000; if it hit the cap,
+      // it was spending tokens on thinking. Flag as reasoning.
+      result.isReasoning = true;
+      result.verdict = 'Model ran out of tokens on the 50-transaction test (response was cut off). A non-reasoning model handles this well under the cap; hitting it means the model is spending tokens on reasoning/thinking. This will fail on real categorization calls with more transactions. Use a non-reasoning model.';
     } else if (!j.hasJson && (complexAnalysis.hasReasoning || complexAnalysis.cutOff)) {
       result.isReasoning = true;
       result.verdict = 'Model thinks out loud on complex tasks. It returned reasoning instead of the expected JSON array. This is a reasoning model that will not produce structured output for categorization.';
