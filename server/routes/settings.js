@@ -134,23 +134,35 @@ router.post('/llm/check', async (req, res) => {
       return res.status(500).json({ error: 'Test 1 failed: ' + simple.error });
     }
 
-    // Test 2: categorization-style request (5 transactions, JSON response)
-    const categoryPrompt = `Categorize these 3 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
+    // Test 2: categorization-style request. Use enough transactions and tokens that
+    // reasoning models (which spend tokens "thinking" before answering) will be forced
+    // to either truncate the JSON or wrap it in prose -- both of which we detect.
+    // 20 transactions, 4000 max_tokens mirrors the shape of a real categorization call.
+    const REALISTIC_CATEGORIES = ['Groceries', 'Dining', 'Transport', 'Shopping', 'Other'];
+    const REALISTIC_DESCRIPTIONS = [
+      'WHOLE FOODS MARKET', 'STARBUCKS COFFEE', 'UBER TRIP', 'AMAZON.COM',
+      'SHELL GAS STATION', 'NETFLIX SUBSCRIPTION', 'APPLE.COM/BILL', 'TRADER JOES',
+      'DOORDASH DELIVERY', 'TARGET STORE', 'WALGREENS PHARMACY', 'LYFT RIDE',
+      'CHIPOTLE MEXICAN', 'COSTCO WHOLESALE', 'CVS PHARMACY', 'MCDONALDS',
+      'DOMINOS PIZZA', 'BEST BUY', 'KROGER GROCERY', 'PIZZA HUT',
+    ];
+    const realisticTxnList = REALISTIC_DESCRIPTIONS
+      .map((d, i) => `[${i}] "${d}" (-${(5 + (i * 3) % 80).toFixed(2)})`)
+      .join('\n');
+    const categoryPrompt = `Categorize these 20 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
 
-Categories: Groceries, Dining, Transport, Shopping, Other
+Categories: ${REALISTIC_CATEGORIES.join(', ')}
 
 Transactions:
-[0] "WHOLE FOODS MARKET" (-47.83)
-[1] "STARBUCKS COFFEE" (-6.50)
-[2] "UBER TRIP" (-15.20)
+${realisticTxnList}
 
-Return: [{"idx":0,"category":"Groceries"},{"idx":1,"category":"Dining"},{"idx":2,"category":"Transport"}]`;
+Return: [{"idx":0,"category":"Groceries"}, ...]`;
     const complex = await callLLM(
       [
         { role: 'system', content: 'You are a transaction categorizer. Return only JSON arrays.' },
         { role: 'user', content: categoryPrompt },
       ],
-      500
+      4000
     );
     if (complex.error) {
       return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
