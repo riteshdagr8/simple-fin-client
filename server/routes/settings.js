@@ -73,7 +73,8 @@ router.post('/llm/check', async (req, res) => {
     return res.status(400).json({ error: 'No LLM config saved yet. Save your settings first.' });
   }
 
-  const { provider, base_url, api_key, model } = existing;
+  const { provider, base_url, model } = existing;
+  const api_key = existing.api_key ? decrypt(existing.api_key) : '';
 
   const buildBody = (messages, maxTokens) => provider === 'anthropic'
     ? {
