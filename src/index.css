@@ -211,6 +211,17 @@ input:focus, select:focus {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
+/* Checkbox row: label wraps a checkbox + text. Use a class instead of
+   inline display:flex to reliably beat the global label{display:block}. */
+.checkbox-row {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  font-weight: 400;
+}
+
 label {
   display: block;
   font-size: 0.875rem;

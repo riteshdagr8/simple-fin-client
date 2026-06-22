@@ -413,7 +413,7 @@ export default function Settings({ setTheme }) {
 
         <form onSubmit={handleEmailSave}>
           <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label className="checkbox-row">
               <input type="checkbox" checked={emailEnabled}
                 onChange={e => setEmailEnabled(e.target.checked)} />
               <span>Enable email summaries</span>
@@ -437,35 +437,35 @@ export default function Settings({ setTheme }) {
               <p style={{ fontWeight: 600, margin: '16px 0 8px' }}>Include in summary:</p>
 
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label className="checkbox-row">
                   <input type="checkbox" checked={emailIncTotal}
                     onChange={e => setEmailIncTotal(e.target.checked)} />
                   <span>Total balance across all accounts</span>
                 </label>
               </div>
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label className="checkbox-row">
                   <input type="checkbox" checked={emailIncAccounts}
                     onChange={e => setEmailIncAccounts(e.target.checked)} />
                   <span>Per-account balance breakdown</span>
                 </label>
               </div>
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label className="checkbox-row">
                   <input type="checkbox" checked={emailIncCategories}
                     onChange={e => setEmailIncCategories(e.target.checked)} />
                   <span>Spending by category</span>
                 </label>
               </div>
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label className="checkbox-row">
                   <input type="checkbox" checked={emailIncToday}
                     onChange={e => setEmailIncToday(e.target.checked)} />
                   <span>Today's transactions</span>
                 </label>
               </div>
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label className="checkbox-row">
                   <input type="checkbox" checked={emailIncWeek}
                     onChange={e => setEmailIncWeek(e.target.checked)} />
                   <span>This week's transactions</span>
