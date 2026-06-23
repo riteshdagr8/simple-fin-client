@@ -135,6 +135,9 @@ router.post('/llm/check', async (req, res) => {
     }
 
     // Test 2: categorization-style request that mirrors the real call's shape.
+    // The trigger for reasoning models is the long system prompt with
+    // CRITICAL RULES -- not the transaction count. Use 50 transactions for
+    // speed; the system prompt is what surfaces the model's reasoning behavior.
     // 200 transactions, the same txn_idx/category/confidence field format, and
     // 8000 max_tokens -- the same shape the production /api/transactions/categorize-llm
     // route uses. A model that "thinks out loud" on complex tasks (like
@@ -155,44 +158,11 @@ router.post('/llm/check', async (req, res) => {
       'OPENAI API', 'ANTHROPIC API', 'GODADDY DOMAIN', 'CLOUDFLARE',
       'DIGITALOCEAN', 'HEROKU DYNOS', 'RENT PAYMENT', 'MORTGAGE PAYMENT',
       'ELECTRIC BILL', 'WATER BILL', 'NATURAL GAS', 'INTERNET PROVIDER',
-      'AMC THEATRES', 'REGAL CINEMAS', 'STEAM GAMES', 'PLAYSTATION STORE',
-      'XBOX LIVE', 'NINTENDO ESHOP', 'AUDIBLE MEMBERSHIP', 'MEDIUM MEMBERSHIP',
-      'NYTIMES SUBSCRIPTION', 'WSJ SUBSCRIPTION', 'ECONOMIST DIGITAL', 'BBC DIGITAL',
-      'GUARDIAN DIGITAL', 'PATREON PAYMENT', 'GOOGLE ONE', 'APPLE ICLOUD+',
-      'DOMAIN RENEWAL', 'SSL CERTIFICATE', 'VPS HOSTING', 'CLOUD HOSTING',
-      'GITHUB COPILOT', 'FIGMA PROFESSIONAL', 'NOTION PLUS', 'LINEAR STANDARD',
-      'SLACK PRO', 'ZOOM PRO', 'DROPBOX PROFESSIONAL', 'GOOGLE WORKSPACE',
-      'MICROSOFT 365', 'QUICKBOOKS ONLINE', 'TURBOTAX', 'H&R BLOCK',
-      'STATE FARM', 'GEICO', 'PROGRESSIVE', 'ALLSTATE INSURANCE',
-      'LIBERTY MUTUAL', 'NATIONWIDE', 'USAA', 'FARMERS INSURANCE',
-      'AUTO LOAN', 'STUDENT LOAN', 'PERSONAL LOAN', 'CREDIT CARD PAYMENT',
-      'MORTGAGE PRINCIPAL', 'MORTGAGE INTEREST', 'PROPERTY TAX', 'HOA FEE',
-      'CONDO FEE', 'RENTERS INSURANCE', 'HOME WARRANTY', 'LIFE INSURANCE',
-      'HEALTH INSURANCE', 'DENTAL INSURANCE', 'VISION INSURANCE', 'PET INSURANCE',
-      'VET VISIT', 'PET FOOD', 'PET GROOMING', 'DOG WALKER',
-      'DAYCARE', 'PRESCHOOL', 'TUITION PAYMENT', 'STUDENT ACTIVITY FEE',
-      'BOOKSTORE', 'SCHOOL SUPPLIES', 'LUNCH MONEY', 'FIELD TRIP',
-      'TUTORING', 'MUSIC LESSONS', 'SWIMMING LESSONS', 'SOCCER REGISTRATION',
-      'BASKETBALL REGISTRATION', 'DANCE CLASS', 'MARTIAL ARTS', 'YOGA CLASS',
-      'PILATES CLASS', 'GYM MEMBERSHIP', 'PERSONAL TRAINER', 'MASSAGE THERAPY',
-      'CHIROPRACTOR', 'PHYSICAL THERAPY', 'DERMATOLOGIST', 'DENTIST',
-      'ORTHODONTIST', 'OPTOMETRIST', 'EYEGLASSES', 'CONTACT LENSES',
-      'PHARMACY', 'CO-PAY', 'MEDICAL BILL', 'HOSPITAL BILL',
-      'EMERGENCY ROOM', 'URGENT CARE', 'TELEMED VISIT', 'LAB WORK',
-      'IMAGING SCAN', 'VACCINATION', 'COVID TEST', 'BLOOD WORK',
-      'PHYSICAL EXAM', 'ANNUAL CHECKUP', 'EYE EXAM', 'DENTAL CLEANING',
-      'CAVITY FILLING', 'ROOT CANAL', 'TOOTH EXTRACTION', 'WISDOM TEETH',
-      'BRACES ADJUSTMENT', 'RETAINER', 'TEETH WHITENING', 'DENTAL IMPLANT',
-      'CAR WASH', 'AUTO REPAIR', 'OIL CHANGE', 'TIRE ROTATION',
-      'BRAKE SERVICE', 'BATTERY REPLACEMENT', 'ALIGNMENT', 'TRANSMISSION',
-      'ENGINE REPAIR', 'TOWING', 'PARKING FEE', 'TOLL CHARGE',
-      'TRAFFIC TICKET', 'DMV FEE', 'REGISTRATION RENEWAL', 'EMISSIONS TEST',
-      'INSPECTION', 'CAR INSURANCE', 'RIDESHARE TIP', 'TAXI FARE',
     ];
     const realisticTxnList = REALISTIC_DESCRIPTIONS
       .map((d, i) => `[${i}] "${d}" (-${(5 + (i * 3) % 80).toFixed(2)})`)
       .join('\n');
-    const categoryPrompt = `Categorize these 200 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
+    const categoryPrompt = `Categorize these ${REALISTIC_DESCRIPTIONS.length} transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
 
 Categories: ${REALISTIC_CATEGORIES.join(', ')}
 
