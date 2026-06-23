@@ -239,7 +239,7 @@ export default function Settings({ setTheme }) {
             <button type="submit" className="primary" disabled={saving}>
               {saving ? <><span className="spinner" /> Saving...</> : 'Save LLM Settings'}
             </button>
-            <button type="button" onClick={handleCheckClick} disabled={checking || !config?.hasKey} title={!config?.hasKey ? 'Save settings first' : 'Test if this model is reasoning or non-reasoning'}>
+            <button type="button" onClick={handleCheckClick} disabled={checking || !config?.hasKey} title={!config?.hasKey ? 'Save settings first' : 'Verify the model is reachable and responds correctly'}>
               {checking ? <><span className="spinner" /> Checking...</> : '🔍 Check Model'}
             </button>
           </div>
@@ -250,23 +250,19 @@ export default function Settings({ setTheme }) {
             marginTop: 16,
             padding: 14,
             borderRadius: 'var(--radius)',
-            border: `1px solid ${checkResult.isReasoning ? 'var(--warning)' : checkResult.isBroken ? 'var(--danger)' : 'var(--success)'}`,
-            background: checkResult.isReasoning ? '#fffbeb' : checkResult.isBroken ? '#fef2f2' : '#f0fdf4',
+            border: `1px solid ${checkResult.ok ? 'var(--success)' : 'var(--danger)'}`,
+            background: checkResult.ok ? '#f0fdf4' : '#fef2f2',
             fontSize: '0.85rem',
           }}>
-            <div style={{ fontWeight: 600, marginBottom: 6, color: checkResult.isReasoning ? 'var(--warning)' : checkResult.isBroken ? 'var(--danger)' : 'var(--success)' }}>
-              {checkResult.isReasoning ? '⚠️ Reasoning Model Detected' : checkResult.isBroken ? '❌ Model is Broken' : '✅ Non-Reasoning Model'}
+            <div style={{ fontWeight: 600, marginBottom: 6, color: checkResult.ok ? 'var(--success)' : 'var(--danger)' }}>
+              {checkResult.ok ? '✅ ' : '❌ '}{checkResult.verdict}
             </div>
-            <div style={{ marginBottom: 6 }}>{checkResult.verdict}</div>
-            {checkResult.recommendation && (
-              <div style={{ color: 'var(--text-secondary)' }}>💡 {checkResult.recommendation}</div>
-            )}
-            {(checkResult.content || checkResult.reasoning) && (
+            <div style={{ marginBottom: 6 }}>{checkResult.detail}</div>
+            {checkResult.content && (
               <details style={{ marginTop: 8, fontSize: '0.8rem' }}>
                 <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>Show raw response</summary>
                 <div style={{ marginTop: 6, fontFamily: 'monospace', fontSize: '0.75rem', background: 'rgba(0,0,0,0.04)', padding: 8, borderRadius: 4, wordBreak: 'break-all' }}>
-                  {checkResult.content && <div><strong>content:</strong> {checkResult.content}</div>}
-                  {checkResult.reasoning && <div><strong>reasoning_content:</strong> {checkResult.reasoning}</div>}
+                  <div><strong>content:</strong> {checkResult.content}</div>
                   {checkResult.finish_reason && <div><strong>finish_reason:</strong> {checkResult.finish_reason}</div>}
                   {checkResult.model && <div><strong>model:</strong> {checkResult.model}</div>}
                 </div>
@@ -286,13 +282,14 @@ export default function Settings({ setTheme }) {
             <div className="modal">
               <h2>Check Model</h2>
               <p style={{ marginBottom: 12, color: 'var(--text-secondary)' }}>
-                This will send a small test request to the LLM to determine whether it's a reasoning model.
-                Most providers charge a small amount of tokens for this — typically well under 100 tokens.
+                This sends a small test prompt to your LLM to verify the model is reachable, your API key is
+                valid, and the model can follow a simple instruction. The categorizer in this app works
+                with both reasoning and non-reasoning models, so the check is just a smoke test of the
+                configuration.
               </p>
               <p style={{ marginBottom: 16, fontSize: '0.85rem' }}>
-                <strong>Cost note:</strong> Reasoning models may use more tokens than non-reasoning models
-                for the same test, since they "think" before responding. The check itself does not perform
-                any categorization — it just sends a single "respond with only: ok" prompt.
+                <strong>Cost note:</strong> The check sends a single short prompt (typically well under
+                100 tokens) and uses the same provider/model as your categorizer.
               </p>
               <div style={{ background: 'var(--surface-2)', padding: 10, borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.8rem' }}>
                 <div><strong>Provider:</strong> {provider}</div>

@@ -134,107 +134,38 @@ router.post('/llm/check', async (req, res) => {
       return res.status(500).json({ error: 'Test 1 failed: ' + simple.error });
     }
 
-    // Test 2: modified wolf-goat-cabbage logic puzzle with a twist.
-    // The classic puzzle requires 7 trips. The twist (cabbage in a locked crate
-    // the goat can't open) reduces the answer to 3. Reasoning models figure
-    // out the trick; non-reasoning models pattern-match the classic puzzle
-    // and answer 7. This is a deterministic test of whether the model can
-    // reason about a problem, which correlates with the model spending
-    // tokens 'thinking' on complex categorization prompts.
-    //
-    // The strict-JSON constraint is part of the test -- a non-reasoning model
-    // that can't follow instructions will fail the JSON parse, which we
-    // also catch.
-    const logicPuzzlePrompt = `Solve this modified logic puzzle.
-
-Puzzle: A farmer needs to cross a river with a wolf, a goat, and a cabbage. His boat can only carry himself and one item. If left alone, the wolf eats the goat, and the goat eats the cabbage. However, the cabbage is currently locked in a secure, heavy-duty crate that the goat cannot open or chew through under any circumstances.
-
-Provide your response strictly in the following JSON format, with no extra text, markdown formatting, or explanations outside the JSON:
-{
-  "minimum_trips": <integer_value>
-}`;
-    const complex = await callLLM(
-      [
-        { role: 'user', content: logicPuzzlePrompt },
-      ],
-      200
-    );
-    if (complex.error) {
-      return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
-    }
-
-    // Parse the logic puzzle response. Try to find JSON in the content (with
-    // possible code fences) and extract minimum_trips.
-    const parsePuzzleResponse = (content) => {
-      if (!content || typeof content !== 'string') {
-        return { ok: false, trips: null, raw: content };
-      }
-      let stripped = content.trim();
-      const fenceMatch = stripped.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
-      if (fenceMatch) stripped = fenceMatch[1].trim();
-      const firstBrace = stripped.indexOf('{');
-      const lastBrace = stripped.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
-        return { ok: false, trips: null, raw: content };
-      }
-      const candidate = stripped.slice(firstBrace, lastBrace + 1);
-      try {
-        const parsed = JSON.parse(candidate);
-        const trips = Number(parsed.minimum_trips);
-        if (!Number.isFinite(trips)) return { ok: false, trips: null, raw: content };
-        return { ok: true, trips, raw: content };
-      } catch {
-        return { ok: false, trips: null, raw: content };
-      }
-    };
-
-    const puzzle = parsePuzzleResponse(complex.content);
+    // Smoke test: verify the model can follow a simple instruction.
+    // If this returns "ok" the model is reachable, authenticated, and able
+    // to produce structured output -- which is all the real categorizer needs.
+    // (We don't try to detect reasoning vs non-reasoning anymore: the
+    // categorizer in server/llm.js is now robust to either.)
+    const simpleText = (simple.content || '').trim().toLowerCase();
+    const simpleOk = simpleText === 'ok' || simpleText.startsWith('ok');
 
     const result = {
-      simple: {
-        content: simple.content.slice(0, 200),
-        reasoning: simple.reasoning.slice(0, 200),
-        finish_reason: simple.finish_reason,
-      },
-      complex: {
-        content: complex.content.slice(0, 500),
-        reasoning: complex.reasoning.slice(0, 500),
-        finish_reason: complex.finish_reason,
-      },
-      model: complex.model || simple.model,
-      isReasoning: false,
-      isBroken: false,
+      ok: simpleOk,
+      content: simple.content.slice(0, 200),
+      model: simple.model || simple.reasoning_content || '',
+      finish_reason: simple.finish_reason,
       verdict: '',
-      recommendation: '',
+      detail: '',
     };
 
-    // Determine verdict from puzzle answer
-    //   3 trips: model reasoned correctly = reasoning model = bad for us
-    //   7 trips: model pattern-matched classic puzzle = non-reasoning = good
-    //   any other number: ambiguous
-    //   failed JSON: non-reasoning but broken (can't follow instructions)
-    if (puzzle.ok && puzzle.trips === 3) {
-      result.isReasoning = true;
-      result.verdict = 'Reasoning model detected: solved the modified puzzle in 3 trips (correctly identified that the locked crate removes the goat-vs-cabbage constraint). Reasoning models spend hidden tokens on complex tasks like transaction categorization, which causes the production categorizer to fail. Use a non-reasoning model.';
-    } else if (puzzle.ok && puzzle.trips === 7) {
-      result.verdict = 'Non-reasoning model: pattern-matched the classic 7-trip wolf-goat-cabbage puzzle without noticing the locked-crate twist. Should work for transaction categorization.';
-    } else if (puzzle.ok) {
-      result.verdict = `Model returned minimum_trips=${puzzle.trips} -- unexpected answer. The puzzle has a unique correct answer (3). If the model couldn't reason about the twist, it likely can't be trusted on real categorization either. Try a different model.`;
+    if (simpleOk) {
+      result.verdict = 'Model is working.';
+      result.detail = 'The model responded to the smoke test as expected. Your LLM settings are valid and the model can follow simple instructions.';
+    } else if (!simple.content) {
+      result.ok = false;
+      result.verdict = 'Model returned an empty response.';
+      result.detail = 'The model endpoint replied with no content. This usually means the model name is wrong, the model is overloaded, or the API rejected the request silently. Check the model name in Settings and try a different one.';
     } else {
-      result.isBroken = true;
-      result.verdict = 'Model failed to return valid JSON for the puzzle prompt. It cannot reliably follow strict output constraints, which means it will not work for transaction categorization either.';
+      result.ok = false;
+      result.verdict = 'Model responded but did not follow the instruction.';
+      const preview = JSON.stringify(simple.content.slice(0, 100));
+      result.detail = 'Expected the model to respond with only the word "ok" but got: ' + preview + '. The categorizer in this app is robust to either, so this is informational only.';
     }
 
-    if (result.isReasoning) {
-      result.recommendation = 'Try a non-reasoning model like claude-haiku-4-5, glm-5, or gpt-5-nano.';
-    } else if (result.isBroken) {
-      result.recommendation = 'This model is not suitable for structured output. Switch to a different model.';
-    } else {
-      result.recommendation = 'This model should work for transaction categorization.';
-    }
-
-    res.json(result);
-  } catch (err) {
+    res.json(result);  } catch (err) {
     // Sanitize: don't leak the full provider error to the client.
     // Log the full error server-side for debugging.
     console.error('[LLM-CHECK] Error:', err);
