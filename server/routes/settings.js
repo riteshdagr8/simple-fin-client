@@ -134,154 +134,61 @@ router.post('/llm/check', async (req, res) => {
       return res.status(500).json({ error: 'Test 1 failed: ' + simple.error });
     }
 
-    // Test 2: categorization-style request that mirrors the real call's shape.
-    // 200 transactions, the same txn_idx/category/confidence field format, and
-    // 8192 max_tokens -- the same shape the production /api/transactions/categorize-llm
-    // route uses. Reasoning models (deepseek-v4-flash) handle smaller inputs cleanly
-    // but "think out loud" on 200-transaction prompts, which is when this check
-    // catches them -- either by truncating mid-JSON or by wrapping in prose.
-    const REALISTIC_CATEGORIES = ['Groceries', 'Dining', 'Transport', 'Shopping', 'Other'];
-    const REALISTIC_DESCRIPTIONS = [
-      'WHOLE FOODS MARKET', 'STARBUCKS COFFEE', 'UBER TRIP', 'AMAZON.COM',
-      'SHELL GAS STATION', 'NETFLIX SUBSCRIPTION', 'APPLE.COM/BILL', 'TRADER JOES',
-      'DOORDASH DELIVERY', 'TARGET STORE', 'WALGREENS PHARMACY', 'LYFT RIDE',
-      'CHIPOTLE MEXICAN', 'COSTCO WHOLESALE', 'CVS PHARMACY', 'MCDONALDS',
-      'DOMINOS PIZZA', 'BEST BUY', 'KROGER GROCERY', 'PIZZA HUT',
-      'STARBUCKS RESERVE', 'UBER EATS', 'VENMO PAYMENT', 'PAYPAL TRANSFER',
-      'AIRBNB STAY', 'DELTA AIRLINES', 'HILTON HOTEL', 'SHELL OIL',
-      'COMCAST CABLE', 'VERIZON WIRELESS', 'AT&T INTERNET', 'T-MOBILE',
-      'SPOTIFY PREMIUM', 'ADOBE CREATIVE', 'DROPBOX STORAGE', 'ICLOUD STORAGE',
-      'GOOGLE STORAGE', 'OFFICE 365', 'GITHUB SUBSCRIPTION', 'AWS BILLING',
-      'OPENAI API', 'ANTHROPIC API', 'GODADDY DOMAIN', 'CLOUDFLARE',
-      'DIGITALOCEAN', 'HEROKU DYNOS', 'RENT PAYMENT', 'MORTGAGE PAYMENT',
-      'ELECTRIC BILL', 'WATER BILL', 'NATURAL GAS', 'INTERNET PROVIDER',
-      'AMC THEATRES', 'REGAL CINEMAS', 'STEAM GAMES', 'PLAYSTATION STORE',
-      'XBOX LIVE', 'NINTENDO ESHOP', 'AUDIBLE MEMBERSHIP', 'MEDIUM MEMBERSHIP',
-      'NYTIMES SUBSCRIPTION', 'WSJ SUBSCRIPTION', 'ECONOMIST DIGITAL', 'BBC DIGITAL',
-      'GUARDIAN DIGITAL', 'PATREON PAYMENT', 'GOOGLE ONE', 'APPLE ICLOUD+',
-      'DOMAIN RENEWAL', 'SSL CERTIFICATE', 'VPS HOSTING', 'CLOUD HOSTING',
-      'GITHUB COPILOT', 'FIGMA PROFESSIONAL', 'NOTION PLUS', 'LINEAR STANDARD',
-      'SLACK PRO', 'ZOOM PRO', 'DROPBOX PROFESSIONAL', 'GOOGLE WORKSPACE',
-      'MICROSOFT 365', 'QUICKBOOKS ONLINE', 'TURBOTAX', 'H&R BLOCK',
-      'STATE FARM', 'GEICO', 'PROGRESSIVE', 'ALLSTATE INSURANCE',
-      'LIBERTY MUTUAL', 'NATIONWIDE', 'USAA', 'FARMERS INSURANCE',
-      'AUTO LOAN', 'STUDENT LOAN', 'PERSONAL LOAN', 'CREDIT CARD PAYMENT',
-      'MORTGAGE PRINCIPAL', 'MORTGAGE INTEREST', 'PROPERTY TAX', 'HOA FEE',
-      'CONDO FEE', 'RENTERS INSURANCE', 'HOME WARRANTY', 'LIFE INSURANCE',
-      'HEALTH INSURANCE', 'DENTAL INSURANCE', 'VISION INSURANCE', 'PET INSURANCE',
-      'VET VISIT', 'PET FOOD', 'PET GROOMING', 'DOG WALKER',
-      'DAYCARE', 'PRESCHOOL', 'TUITION PAYMENT', 'STUDENT ACTIVITY FEE',
-      'BOOKSTORE', 'SCHOOL SUPPLIES', 'LUNCH MONEY', 'FIELD TRIP',
-      'TUTORING', 'MUSIC LESSONS', 'SWIMMING LESSONS', 'SOCCER REGISTRATION',
-      'BASKETBALL REGISTRATION', 'DANCE CLASS', 'MARTIAL ARTS', 'YOGA CLASS',
-      'PILATES CLASS', 'GYM MEMBERSHIP', 'PERSONAL TRAINER', 'MASSAGE THERAPY',
-      'CHIROPRACTOR', 'PHYSICAL THERAPY', 'DERMATOLOGIST', 'DENTIST',
-      'ORTHODONTIST', 'OPTOMETRIST', 'EYEGLASSES', 'CONTACT LENSES',
-      'PHARMACY', 'CO-PAY', 'MEDICAL BILL', 'HOSPITAL BILL',
-      'EMERGENCY ROOM', 'URGENT CARE', 'TELEMED VISIT', 'LAB WORK',
-      'IMAGING SCAN', 'VACCINATION', 'COVID TEST', 'BLOOD WORK',
-      'PHYSICAL EXAM', 'ANNUAL CHECKUP', 'EYE EXAM', 'DENTAL CLEANING',
-      'CAVITY FILLING', 'ROOT CANAL', 'TOOTH EXTRACTION', 'WISDOM TEETH',
-      'BRACES ADJUSTMENT', 'RETAINER', 'TEETH WHITENING', 'DENTAL IMPLANT',
-      'CAR WASH', 'AUTO REPAIR', 'OIL CHANGE', 'TIRE ROTATION',
-      'BRAKE SERVICE', 'BATTERY REPLACEMENT', 'ALIGNMENT', 'TRANSMISSION',
-      'ENGINE REPAIR', 'TOWING', 'PARKING FEE', 'TOLL CHARGE',
-      'TRAFFIC TICKET', 'DMV FEE', 'REGISTRATION RENEWAL', 'EMISSIONS TEST',
-      'INSPECTION', 'CAR INSURANCE', 'RIDESHARE TIP', 'TAXI FARE',
-    ];
-    const realisticTxnList = REALISTIC_DESCRIPTIONS
-      .map((d, i) => `[${i}] "${d}" (-${(5 + (i * 3) % 80).toFixed(2)})`)
-      .join('\n');
-    const categoryPrompt = `Categorize these ${REALISTIC_DESCRIPTIONS.length} transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
+    // Test 2: modified wolf-goat-cabbage logic puzzle with a twist.
+    // The classic puzzle requires 7 trips. The twist (cabbage in a locked crate
+    // the goat can't open) reduces the answer to 3. Reasoning models figure
+    // out the trick; non-reasoning models pattern-match the classic puzzle
+    // and answer 7. This is a deterministic test of whether the model can
+    // reason about a problem, which correlates with the model spending
+    // tokens 'thinking' on complex categorization prompts.
+    //
+    // The strict-JSON constraint is part of the test -- a non-reasoning model
+    // that can't follow instructions will fail the JSON parse, which we
+    // also catch.
+    const logicPuzzlePrompt = `Solve this modified logic puzzle.
 
-Categories: ${REALISTIC_CATEGORIES.join(', ')}
+Puzzle: A farmer needs to cross a river with a wolf, a goat, and a cabbage. His boat can only carry himself and one item. If left alone, the wolf eats the goat, and the goat eats the cabbage. However, the cabbage is currently locked in a secure, heavy-duty crate that the goat cannot open or chew through under any circumstances.
 
-Transactions:
-${realisticTxnList}
-
-Return: [{"txn_idx":0,"category":"Groceries","confidence":0.95}, ...]`;
-    const systemPrompt = `You are a transaction categorizer. For each transaction, choose the single best matching category from this list:
-
-${REALISTIC_CATEGORIES.map(c => `- ${c}`).join('\n')}
-
-CRITICAL RULES:
-- Return ONLY a JSON array, no explanation, no thinking, no preamble
-- Do NOT output any reasoning, analysis, or commentary before the JSON
-- Output must START with [ and END with ]
-- Use EXACT category names from the list above
-- Match the description text to the category meaning
-- Negative amounts (withdrawals) match spending categories`;
-
+Provide your response strictly in the following JSON format, with no extra text, markdown formatting, or explanations outside the JSON:
+{
+  "minimum_trips": <integer_value>
+}`;
     const complex = await callLLM(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: categoryPrompt },
+        { role: 'user', content: logicPuzzlePrompt },
       ],
-      8192
+      200
     );
     if (complex.error) {
       return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
     }
 
-    // Heuristics
-    const reasoningPhrases = [
-      'i need to', 'i should', 'let me', "i'll", 'i will',
-      'first,', 'to begin', 'the user wants', 'the user is asking',
-      'i need to categorize', 'let me categorize', 'i will categorize',
-      'i must follow', 'i should output', 'i need to output',
-      'step by step', "let's ", 'going through',
-      'looking at', 'based on the', 'the description suggests',
-      'we need to', 'we are to', 'we should', 'to categorize',
-    ];
-
-    // Try to extract a JSON array from arbitrary content. Handles:
-    //  - clean JSON:    '[{"a":1}]'
-    //  - prose prefix:  'Let me think...\n[{"a":1}]'
-    //  - prose suffix:  '[{"a":1}]\nDone.'
-    //  - code fences:   '```json\n[{"a":1}]\n```'
-    //  - markdown:      'Here you go: [{"a":1}]'
-    // Returns { hasJson, proseBefore, proseAfter }.
-    const inspectJson = (content) => {
+    // Parse the logic puzzle response. Try to find JSON in the content (with
+    // possible code fences) and extract minimum_trips.
+    const parsePuzzleResponse = (content) => {
       if (!content || typeof content !== 'string') {
-        return { hasJson: false, proseBefore: false, proseAfter: false };
+        return { ok: false, trips: null, raw: content };
       }
-      // Strip code fences if present
       let stripped = content.trim();
       const fenceMatch = stripped.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
       if (fenceMatch) stripped = fenceMatch[1].trim();
-      // Look for the first '[' and last ']'
-      const firstBracket = stripped.indexOf('[');
-      const lastBracket = stripped.lastIndexOf(']');
-      if (firstBracket === -1 || lastBracket === -1 || lastBracket < firstBracket) {
-        return { hasJson: false, proseBefore: false, proseAfter: false };
+      const firstBrace = stripped.indexOf('{');
+      const lastBrace = stripped.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+        return { ok: false, trips: null, raw: content };
       }
-      const candidate = stripped.slice(firstBracket, lastBracket + 1);
-      let parsed;
+      const candidate = stripped.slice(firstBrace, lastBrace + 1);
       try {
-        parsed = JSON.parse(candidate);
+        const parsed = JSON.parse(candidate);
+        const trips = Number(parsed.minimum_trips);
+        if (!Number.isFinite(trips)) return { ok: false, trips: null, raw: content };
+        return { ok: true, trips, raw: content };
       } catch {
-        return { hasJson: false, proseBefore: false, proseAfter: false };
+        return { ok: false, trips: null, raw: content };
       }
-      if (!Array.isArray(parsed)) {
-        return { hasJson: false, proseBefore: false, proseAfter: false };
-      }
-      const proseBefore = stripped.slice(0, firstBracket).trim().length > 0;
-      const proseAfter = stripped.slice(lastBracket + 1).trim().length > 0;
-      return { hasJson: true, proseBefore, proseAfter };
     };
 
-    const analyzeResponse = (resp, testName, expectedLength) => {
-      const fullText = (resp.content + ' ' + resp.reasoning).toLowerCase();
-      const hasReasoning = reasoningPhrases.some(p => fullText.includes(p));
-      const echoes = resp.content.toLowerCase().includes('respond with only') ||
-                     resp.content.toLowerCase().includes('return only');
-      const json = inspectJson(resp.content);
-      const cutOff = resp.finish_reason === 'length';
-      return { resp, hasReasoning, echoes, json, cutOff, fullText };
-    };
-
-    const simpleAnalysis = analyzeResponse(simple, 'simple', 10);
-    const complexAnalysis = analyzeResponse(complex, 'complex', 200);
+    const puzzle = parsePuzzleResponse(complex.content);
 
     const result = {
       simple: {
@@ -301,35 +208,21 @@ CRITICAL RULES:
       recommendation: '',
     };
 
-    // Determine verdict
-    // The complex test is the real signal — if it doesn't return parseable JSON, the model is unsuitable.
-    // Three states: clean JSON, JSON with prose around it (often a reasoning model paraphrasing the prompt),
-    // or no JSON at all.
-    const j = complexAnalysis.json;
-    if (complex.content.length === 0) {
+    // Determine verdict from puzzle answer
+    //   3 trips: model reasoned correctly = reasoning model = bad for us
+    //   7 trips: model pattern-matched classic puzzle = non-reasoning = good
+    //   any other number: ambiguous
+    //   failed JSON: non-reasoning but broken (can't follow instructions)
+    if (puzzle.ok && puzzle.trips === 3) {
       result.isReasoning = true;
-      result.verdict = 'Model returned empty content on the complex test. Likely a reasoning model that needs more tokens to think AND answer.';
-    } else if (complexAnalysis.cutOff && !j.proseBefore && !j.proseAfter) {
-      // Response was cut off mid-generation (finish_reason === 'length'), meaning
-      // the model used all available tokens. A non-reasoning model that was given
-      // 6000 tokens for 50 transactions would only need ~3000; if it hit the cap,
-      // it was spending tokens on thinking. Flag as reasoning.
-      result.isReasoning = true;
-      result.verdict = 'Model ran out of tokens on the 50-transaction test (response was cut off). A non-reasoning model handles this well under the cap; hitting it means the model is spending tokens on reasoning/thinking. This will fail on real categorization calls with more transactions. Use a non-reasoning model.';
-    } else if (!j.hasJson && (complexAnalysis.hasReasoning || complexAnalysis.cutOff)) {
-      result.isReasoning = true;
-      result.verdict = 'Model thinks out loud on complex tasks. It returned reasoning instead of the expected JSON array. This is a reasoning model that will not produce structured output for categorization.';
-    } else if (!j.hasJson && complexAnalysis.echoes) {
-      result.isBroken = true;
-      result.verdict = 'Model is echoing the prompt instead of following instructions. Not suitable for structured output.';
-    } else if (!j.hasJson) {
-      result.isReasoning = true;
-      result.verdict = 'Model did not return valid JSON. It produced freeform text instead. This will not work for transaction categorization.';
-    } else if (j.proseBefore || j.proseAfter) {
-      result.isReasoning = true;
-      result.verdict = 'Model returned a JSON array but wrapped it in reasoning prose (e.g., paraphrasing the prompt before answering). The JSON is hidden in the text, so strict parsers will fail. This is a reasoning model that will not produce clean structured output for categorization.';
+      result.verdict = 'Reasoning model detected: solved the modified puzzle in 3 trips (correctly identified that the locked crate removes the goat-vs-cabbage constraint). Reasoning models spend hidden tokens on complex tasks like transaction categorization, which causes the production categorizer to fail. Use a non-reasoning model.';
+    } else if (puzzle.ok && puzzle.trips === 7) {
+      result.verdict = 'Non-reasoning model: pattern-matched the classic 7-trip wolf-goat-cabbage puzzle without noticing the locked-crate twist. Should work for transaction categorization.';
+    } else if (puzzle.ok) {
+      result.verdict = `Model returned minimum_trips=${puzzle.trips} -- unexpected answer. The puzzle has a unique correct answer (3). If the model couldn't reason about the twist, it likely can't be trusted on real categorization either. Try a different model.`;
     } else {
-      result.verdict = 'Non-reasoning model — it produced a clean JSON array for the categorization test. Should work for transaction categorization.';
+      result.isBroken = true;
+      result.verdict = 'Model failed to return valid JSON for the puzzle prompt. It cannot reliably follow strict output constraints, which means it will not work for transaction categorization either.';
     }
 
     if (result.isReasoning) {
