@@ -134,12 +134,12 @@ router.post('/llm/check', async (req, res) => {
       return res.status(500).json({ error: 'Test 1 failed: ' + simple.error });
     }
 
-    // Test 2: categorization-style request. Use enough transactions and tokens that
-    // reasoning models (which spend tokens "thinking" before answering) will be forced
-    // to either truncate the JSON or wrap it in prose -- both of which we detect.
-    // 50 transactions, 6000 max_tokens -- small enough to be fast, large enough that
-    // a model that "thinks out loud" on complex tasks (like deepseek-v4-flash does
-    // on 200-transaction real calls) will reveal itself.
+    // Test 2: categorization-style request that mirrors the real call's shape.
+    // 200 transactions, the same txn_idx/category/confidence field format, and
+    // 8000 max_tokens -- the same shape the production /api/transactions/categorize-llm
+    // route uses. A model that "thinks out loud" on complex tasks (like
+    // deepseek-v4-flash does on real 200-transaction calls) will reveal itself
+    // here: either by truncating mid-JSON or by wrapping in prose.
     const REALISTIC_CATEGORIES = ['Groceries', 'Dining', 'Transport', 'Shopping', 'Other'];
     const REALISTIC_DESCRIPTIONS = [
       'WHOLE FOODS MARKET', 'STARBUCKS COFFEE', 'UBER TRIP', 'AMAZON.COM',
@@ -155,24 +155,57 @@ router.post('/llm/check', async (req, res) => {
       'OPENAI API', 'ANTHROPIC API', 'GODADDY DOMAIN', 'CLOUDFLARE',
       'DIGITALOCEAN', 'HEROKU DYNOS', 'RENT PAYMENT', 'MORTGAGE PAYMENT',
       'ELECTRIC BILL', 'WATER BILL', 'NATURAL GAS', 'INTERNET PROVIDER',
+      'AMC THEATRES', 'REGAL CINEMAS', 'STEAM GAMES', 'PLAYSTATION STORE',
+      'XBOX LIVE', 'NINTENDO ESHOP', 'AUDIBLE MEMBERSHIP', 'MEDIUM MEMBERSHIP',
+      'NYTIMES SUBSCRIPTION', 'WSJ SUBSCRIPTION', 'ECONOMIST DIGITAL', 'BBC DIGITAL',
+      'GUARDIAN DIGITAL', 'PATREON PAYMENT', 'GOOGLE ONE', 'APPLE ICLOUD+',
+      'DOMAIN RENEWAL', 'SSL CERTIFICATE', 'VPS HOSTING', 'CLOUD HOSTING',
+      'GITHUB COPILOT', 'FIGMA PROFESSIONAL', 'NOTION PLUS', 'LINEAR STANDARD',
+      'SLACK PRO', 'ZOOM PRO', 'DROPBOX PROFESSIONAL', 'GOOGLE WORKSPACE',
+      'MICROSOFT 365', 'QUICKBOOKS ONLINE', 'TURBOTAX', 'H&R BLOCK',
+      'STATE FARM', 'GEICO', 'PROGRESSIVE', 'ALLSTATE INSURANCE',
+      'LIBERTY MUTUAL', 'NATIONWIDE', 'USAA', 'FARMERS INSURANCE',
+      'AUTO LOAN', 'STUDENT LOAN', 'PERSONAL LOAN', 'CREDIT CARD PAYMENT',
+      'MORTGAGE PRINCIPAL', 'MORTGAGE INTEREST', 'PROPERTY TAX', 'HOA FEE',
+      'CONDO FEE', 'RENTERS INSURANCE', 'HOME WARRANTY', 'LIFE INSURANCE',
+      'HEALTH INSURANCE', 'DENTAL INSURANCE', 'VISION INSURANCE', 'PET INSURANCE',
+      'VET VISIT', 'PET FOOD', 'PET GROOMING', 'DOG WALKER',
+      'DAYCARE', 'PRESCHOOL', 'TUITION PAYMENT', 'STUDENT ACTIVITY FEE',
+      'BOOKSTORE', 'SCHOOL SUPPLIES', 'LUNCH MONEY', 'FIELD TRIP',
+      'TUTORING', 'MUSIC LESSONS', 'SWIMMING LESSONS', 'SOCCER REGISTRATION',
+      'BASKETBALL REGISTRATION', 'DANCE CLASS', 'MARTIAL ARTS', 'YOGA CLASS',
+      'PILATES CLASS', 'GYM MEMBERSHIP', 'PERSONAL TRAINER', 'MASSAGE THERAPY',
+      'CHIROPRACTOR', 'PHYSICAL THERAPY', 'DERMATOLOGIST', 'DENTIST',
+      'ORTHODONTIST', 'OPTOMETRIST', 'EYEGLASSES', 'CONTACT LENSES',
+      'PHARMACY', 'CO-PAY', 'MEDICAL BILL', 'HOSPITAL BILL',
+      'EMERGENCY ROOM', 'URGENT CARE', 'TELEMED VISIT', 'LAB WORK',
+      'IMAGING SCAN', 'VACCINATION', 'COVID TEST', 'BLOOD WORK',
+      'PHYSICAL EXAM', 'ANNUAL CHECKUP', 'EYE EXAM', 'DENTAL CLEANING',
+      'CAVITY FILLING', 'ROOT CANAL', 'TOOTH EXTRACTION', 'WISDOM TEETH',
+      'BRACES ADJUSTMENT', 'RETAINER', 'TEETH WHITENING', 'DENTAL IMPLANT',
+      'CAR WASH', 'AUTO REPAIR', 'OIL CHANGE', 'TIRE ROTATION',
+      'BRAKE SERVICE', 'BATTERY REPLACEMENT', 'ALIGNMENT', 'TRANSMISSION',
+      'ENGINE REPAIR', 'TOWING', 'PARKING FEE', 'TOLL CHARGE',
+      'TRAFFIC TICKET', 'DMV FEE', 'REGISTRATION RENEWAL', 'EMISSIONS TEST',
+      'INSPECTION', 'CAR INSURANCE', 'RIDESHARE TIP', 'TAXI FARE',
     ];
     const realisticTxnList = REALISTIC_DESCRIPTIONS
       .map((d, i) => `[${i}] "${d}" (-${(5 + (i * 3) % 80).toFixed(2)})`)
       .join('\n');
-    const categoryPrompt = `Categorize these 50 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
+    const categoryPrompt = `Categorize these 200 transactions. Return ONLY a JSON array, no explanation, no thinking. Use exact category names.
 
 Categories: ${REALISTIC_CATEGORIES.join(', ')}
 
 Transactions:
 ${realisticTxnList}
 
-Return: [{"idx":0,"category":"Groceries"}, ...]`;
+Return: [{"txn_idx":0,"category":"Groceries","confidence":0.95}, ...]`;
     const complex = await callLLM(
       [
-        { role: 'system', content: 'You are a transaction categorizer. Return only JSON arrays.' },
+        { role: 'system', content: 'You are a transaction categorizer. Return only JSON arrays. Output must START with [ and END with ]. Do NOT output any reasoning, analysis, or commentary before the JSON.' },
         { role: 'user', content: categoryPrompt },
       ],
-      6000
+      8000
     );
     if (complex.error) {
       return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
