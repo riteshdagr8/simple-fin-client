@@ -103,20 +103,28 @@ export async function categorizeTransactions(userId, transactions, categories) {
     `[${i}] "${t.description}" (${t.amount > 0 ? '+' : ''}${t.amount.toFixed(2)})`
   ).join('\n');
 
+  // Line-by-line output format. Reasoning models can't easily wrap one
+  // category per line in prose, and the parser is robust to truncation
+  // (we just process the lines we got). If the model returns JSON anyway,
+  // we fall back to a bracket-counted JSON extractor.
   const systemPrompt = `You are a transaction categorizer. For each transaction, choose the single best matching category from this list:
 
 ${categoryDefs}
 
 CRITICAL RULES:
-- Return ONLY a JSON array, no explanation, no thinking, no preamble
-- Do NOT output any reasoning, analysis, or commentary before the JSON
-- Output must START with [ and END with ]
-- Use EXACT category names from the list above
+- Output EXACTLY one category name per line, in the same order as the transactions
+- No numbering, no bullets, no JSON, no explanation, no preamble
+- Use EXACT category names from the list above (case-sensitive)
+- Each line should contain ONLY the category name (e.g. "Groceries")
 - Match the description text to the category meaning
 - Positive amounts (deposits) likely are "Income" or "Transfer"
 - Negative amounts (withdrawals) match spending categories`;
 
-  const userPrompt = `Categorize these ${transactions.length} transactions:\n${txnList}\n\nReturn: [{"txn_idx": 0, "category": "CategoryName", "confidence": 0.95}, ...]`;
+  const userPrompt = `Categorize these ${transactions.length} transactions. Output exactly one category name per line, in order:
+
+${txnList}
+
+Categories: ${categories.map(c => c.name).join(', ')}`;
 
   const content = await chat(userId, [
     { role: 'system', content: systemPrompt },
@@ -131,50 +139,102 @@ CRITICAL RULES:
     const config = await getUserConfig(userId);
     throw new Error(
       `LLM returned an empty response. Check your Settings: provider=${config?.provider}, ` +
-      `model=${config?.model}, baseUrl=${config?.baseUrl}. ` +
-      `Reasoning models (e.g. deepseek-v4-flash) often return empty content because they spend all tokens on thinking. ` +
-      `Try a non-reasoning model like "minimax-m2.5" or "grok-build-0.1".`
+      `model=${config?.model}, baseUrl=${config?.baseUrl}.`
     );
   }
 
-  // Parse JSON response — be lenient: extract the first JSON array found
-  let parsed;
-  try {
-    // Find all candidate JSON arrays (greedy) and try each
-    const candidates = [...content.matchAll(/\[[\s\S]*?\]/g)].map(m => m[0]);
-    if (candidates.length === 0) {
-      throw new Error(`No JSON array found. Response was: ${content.slice(0, 300)}`);
-    }
-    // Try parsing each candidate, take the first that succeeds and looks like our schema
-    let lastError = null;
-    for (const candidate of candidates) {
+  // Build a normalized lookup of category names (lowercased) for fuzzy matching.
+  const catByLower = new Map(categories.map(c => [c.name.toLowerCase(), c]));
+
+  // Try the line-by-line path first. For each non-empty line, look for an
+  // exact category name match (case-insensitive). Skip lines that don't
+  // match any category (treated as prose). If we got at least one match,
+  // map matches in order to transactions.
+  const lineMatches = [];
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Strip common prefixes like "1:", "1.", "- ", "[1]" that the model might add
+    const stripped = line
+      .replace(/^\[?\d+\]?[\s.:)\-]*/, '')
+      .replace(/^[-*]\s+/, '')
+      .trim();
+    if (!stripped) continue;
+    const cat = catByLower.get(stripped.toLowerCase());
+    if (cat) lineMatches.push(cat);
+  }
+
+  let parsed = null;
+  let parseMode = 'line-by-line';
+
+  if (lineMatches.length > 0) {
+    // Map each match to its corresponding transaction (by order)
+    parsed = lineMatches.slice(0, transactions.length).map((cat, idx) => ({
+      txn_idx: idx,
+      category: cat.name,
+      confidence: 0.9,
+    }));
+  } else {
+    // Fall back to JSON: use a bracket-counting extractor to find the first
+    // balanced JSON array. This handles prose-wrapped and nested objects
+    // correctly, unlike the previous non-greedy regex.
+    const arrayText = extractBalancedJsonArray(content);
+    if (arrayText) {
       try {
-        const obj = JSON.parse(candidate);
-        if (Array.isArray(obj) && obj.length > 0 && (obj[0].category || obj[0].txn_idx !== undefined)) {
+        const obj = JSON.parse(arrayText);
+        if (Array.isArray(obj)) {
           parsed = obj;
-          break;
+          parseMode = 'json';
         }
-      } catch (e) {
-        lastError = e;
-        continue;
+      } catch (err) {
+        // fall through
       }
     }
-    if (!parsed) {
-      // Fallback: try the first candidate anyway
-      parsed = JSON.parse(candidates[0]);
-    }
-  } catch (err) {
-    throw new Error(`Failed to parse LLM response: ${err.message}\nRaw: ${content.slice(0, 200)}`);
+  }
+
+  if (!parsed) {
+    throw new Error(
+      `Failed to parse LLM response. The model did not return category names per line ` +
+      `and no JSON array was found. Raw (first 300 chars): ${content.slice(0, 300)}`
+    );
   }
 
   // Map back to transactions
   const results = [];
   for (const item of parsed) {
-    const txn = transactions[item.txn_idx];
-    const cat = categories.find(c => c.name.toLowerCase() === String(item.category).toLowerCase());
+    const idx = Number(item.txn_idx ?? item.idx);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= transactions.length) continue;
+    const txn = transactions[idx];
+    const catName = String(item.category || '').trim();
+    const cat = catByLower.get(catName.toLowerCase());
     if (txn && cat) {
       results.push({ txnId: txn.id, categoryId: cat.id, confidence: item.confidence || 0.9 });
     }
   }
+  console.log(`[LLM] Parsed ${results.length}/${transactions.length} transactions via ${parseMode}`);
   return results;
+}
+
+// Find the first balanced JSON array in a string. Handles nested objects and
+// arrays correctly, unlike a non-greedy regex. Returns the array text
+// (including brackets), or null if no balanced array is found.
+function extractBalancedJsonArray(text) {
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
