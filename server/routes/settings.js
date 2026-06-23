@@ -200,12 +200,24 @@ Transactions:
 ${realisticTxnList}
 
 Return: [{"txn_idx":0,"category":"Groceries","confidence":0.95}, ...]`;
+    const systemPrompt = `You are a transaction categorizer. For each transaction, choose the single best matching category from this list:
+
+${REALISTIC_CATEGORIES.map(c => `- ${c}`).join('\n')}
+
+CRITICAL RULES:
+- Return ONLY a JSON array, no explanation, no thinking, no preamble
+- Do NOT output any reasoning, analysis, or commentary before the JSON
+- Output must START with [ and END with ]
+- Use EXACT category names from the list above
+- Match the description text to the category meaning
+- Negative amounts (withdrawals) match spending categories`;
+
     const complex = await callLLM(
       [
-        { role: 'system', content: 'You are a transaction categorizer. Return only JSON arrays. Output must START with [ and END with ]. Do NOT output any reasoning, analysis, or commentary before the JSON.' },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: categoryPrompt },
       ],
-      8000
+      8192
     );
     if (complex.error) {
       return res.status(500).json({ error: 'Test 2 failed: ' + complex.error });
