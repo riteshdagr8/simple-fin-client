@@ -230,13 +230,28 @@ function buildSummaryHtml(name, data, settings) {
 
 export async function sendSummaryEmail(userId) {
   const db = getDb();
+
+  // Atomic claim: update last_sent_at and return whether we won the race.
+  // This prevents duplicate emails when multiple server processes (e.g.
+  // stale dev servers) each run runDueSummaries concurrently. The UPDATE
+  // succeeds for exactly one process; the rest see changes === 0 and skip.
+  const claim = db.prepare(`
+    UPDATE email_summary_settings
+    SET last_sent_at = datetime('now')
+    WHERE user_id = ?
+      AND enabled = 1
+      AND (last_sent_at IS NULL
+           OR datetime(last_sent_at, '+' || frequency_hours || ' hours') <= datetime('now'))
+  `).run(userId);
+
+  if (claim.changes === 0) return { skipped: 'already_claimed' };
+
   const user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(userId);
   if (!user) return { skipped: 'no_user' };
   if (!user.email) return { skipped: 'no_email' };
 
   const settings = db.prepare('SELECT * FROM email_summary_settings WHERE user_id = ?')
     .get(userId);
-  if (!settings || !settings.enabled) return { skipped: 'disabled' };
 
   const data = await buildSummaryData(userId, settings);
   const html = buildSummaryHtml(user.name || 'there', data, settings);
