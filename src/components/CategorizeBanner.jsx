@@ -103,7 +103,7 @@ export default function CategorizeBanner({ job, onDismiss, onStartAnother, onRef
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             {job.items_total - job.items_processed > 0
-              ? `${job.items_total - job.items_processed} more remaining`
+              ? `${job.items_total - job.items_processed} uncategorized`
               : 'All uncategorized transactions are done'}
             {' · '}
             {timeAgo(job.completed_at)}
