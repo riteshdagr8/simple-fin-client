@@ -81,7 +81,7 @@ router.get('/', (req, res) => {
       AND (a.id IS NULL OR (a.is_hidden IS NULL OR a.is_hidden = 0))
     GROUP BY cat.id
     ORDER BY total ASC
-  `).all(uid, ...dateParams);
+  `).all(...dateParams, uid);
 
   res.json({
     totalBalance: balances.total_balance,
