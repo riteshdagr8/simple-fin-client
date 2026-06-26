@@ -25,9 +25,10 @@ router.get('/', (req, res) => {
   let params = [req.user.userId];
 
   if (search) {
-    // Match either description OR category name
-    where.push('(t.description LIKE ? OR cat.name LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`);
+    // Match either description OR category name (case-insensitive)
+    const term = `%${search}%`;
+    where.push('(LOWER(t.description) LIKE LOWER(?) OR LOWER(cat.name) LIKE LOWER(?))');
+    params.push(term, term);
   }
   if (account_id) {
     where.push('t.account_id = ?');
