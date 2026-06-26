@@ -15,6 +15,7 @@ export default function Transactions() {
   const [assigningCat, setAssigningCat] = useState(null); // { txnId, catId }
 
   const [search, setSearch] = useState('');
+  const [bankName, setBankName] = useState('');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -99,6 +100,7 @@ export default function Transactions() {
     setLoading(true);
     const params = { limit: PAGE_SIZE, offset: pageOffset, sort_by: sortBy, sort_dir: sortDir };
     if (search) params.search = search;
+    if (bankName) params.bank_name = bankName;
     if (accountId) params.account_id = accountId;
     if (categoryId) params.category_id = categoryId;
     if (startDate) params.start_date = startDate;
@@ -114,7 +116,11 @@ export default function Transactions() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadTxns(); }, [search, accountId, categoryId, startDate, endDate, offset, sortBy, sortDir]);
+  useEffect(() => { loadTxns(); }, [search, bankName, accountId, categoryId, startDate, endDate, offset, sortBy, sortDir]);
+
+  // Derived: unique bank names and accounts filtered by selected bank
+  const uniqueBanks = [...new Set(accounts.map(a => a.bank_name).filter(Boolean))].sort();
+  const filteredAccounts = bankName ? accounts.filter(a => a.bank_name === bankName) : accounts;
 
   const handleAI = async () => {
     setAiLoading(true);
@@ -279,11 +285,20 @@ export default function Transactions() {
             <label>Search</label>
             <input value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} placeholder="Description or category..." />
           </div>
+          {uniqueBanks.length > 1 && (
+            <div className="form-group">
+              <label>Bank</label>
+              <select value={bankName} onChange={e => { setBankName(e.target.value); setAccountId(''); setOffset(0); }}>
+                <option value="">All Banks</option>
+                {uniqueBanks.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
           <div className="form-group">
             <label>Account</label>
             <select value={accountId} onChange={e => { setAccountId(e.target.value); setOffset(0); }}>
               <option value="">All Accounts</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -301,7 +316,7 @@ export default function Transactions() {
             <label>End Date</label>
             <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setOffset(0); }} />
           </div>
-          <button onClick={() => { setSearch(''); setAccountId(''); setCategoryId(''); setStartDate(''); setEndDate(''); setOffset(0); }}>
+          <button onClick={() => { setSearch(''); setBankName(''); setAccountId(''); setCategoryId(''); setStartDate(''); setEndDate(''); setOffset(0); }}>
             Clear
           </button>
         </div>

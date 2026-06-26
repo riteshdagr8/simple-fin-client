@@ -7,7 +7,7 @@ const router = Router();
 // List transactions with optional filters
 router.get('/', (req, res) => {
   const db = getDb();
-  const { limit = 100, offset = 0, search, account_id, start_date, end_date, uncategorized, category_id, sort_by = 'posted', sort_dir = 'desc' } = req.query;
+  const { limit = 100, offset = 0, search, account_id, bank_name, start_date, end_date, uncategorized, category_id, sort_by = 'posted', sort_dir = 'desc' } = req.query;
 
   // Whitelist sortable columns to prevent SQL injection
   const allowedSortCols = {
@@ -32,6 +32,10 @@ router.get('/', (req, res) => {
   if (account_id) {
     where.push('t.account_id = ?');
     params.push(account_id);
+  }
+  if (bank_name) {
+    where.push('(a.bank_name = ? OR c.name = ?)');
+    params.push(bank_name, bank_name);
   }
   if (category_id) {
     where.push('cat.id = ?');
