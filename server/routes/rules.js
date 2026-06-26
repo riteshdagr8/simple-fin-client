@@ -126,8 +126,12 @@ router.put('/:id', (req, res) => {
 // Delete a rule
 router.delete('/:id', (req, res) => {
   const db = getDb();
-  const r = db.prepare('DELETE FROM category_rules WHERE id = ? AND user_id = ?').run(req.params.id, req.user.userId);
-  res.json({ success: r.changes > 0 });
+  const cat = db.prepare('SELECT id FROM category_rules WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!cat) return res.status(404).json({ error: 'Rule not found' });
+
+  db.prepare('DELETE FROM category_rules WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // Preview what a rule would match (without applying it)
