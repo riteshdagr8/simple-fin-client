@@ -67,7 +67,7 @@ router.get('/', (req, res) => {
     ORDER BY name
   `).all(uid);
 
-  // Spending by category
+  // Spending by category (only includes transactions with a category)
   const categorySpending = db.prepare(`
     SELECT cat.id, cat.name, cat.icon, cat.color,
            COALESCE(SUM(t.amount), 0) as total
@@ -83,6 +83,17 @@ router.get('/', (req, res) => {
     ORDER BY total ASC
   `).all(...dateParams, uid);
 
+  // Total spend across ALL transactions (categorized + uncategorized)
+  const periodSpend = db.prepare(`
+    SELECT COALESCE(SUM(t.amount), 0) as total
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    JOIN connections c ON c.id = a.connection_id
+    WHERE c.user_id = ? AND t.amount < 0
+      AND (a.is_hidden IS NULL OR a.is_hidden = 0)
+      ${dateWhere}
+  `).get(...dateParams, uid);
+
   res.json({
     totalBalance: balances.total_balance,
     accountCount: balances.account_count,
@@ -90,6 +101,7 @@ router.get('/', (req, res) => {
     recentSyncs: lastSync,
     connections,
     categorySpending,
+    totalSpend: Math.abs(periodSpend.total),
   });
 });
 

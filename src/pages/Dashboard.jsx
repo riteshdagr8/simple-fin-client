@@ -42,9 +42,11 @@ export default function Dashboard() {
   if (error) return <div className="empty-state"><p className="error-message">{error}</p></div>;
   if (!data) return null;
 
-  const { totalBalance, accountCount, recentTransactions, categorySpending } = data;
+  const { totalBalance, accountCount, recentTransactions, categorySpending, totalSpend: apiTotalSpend } = data;
   const visibleSpending = (categorySpending || []).filter(c => c.total !== 0);
-  const totalSpend = visibleSpending.reduce((sum, c) => sum + Math.abs(c.total), 0);
+  // Use server-computed totalSpend (includes uncategorized txns) when available,
+  // fall back to computing from categorySpending for backwards compatibility.
+  const totalSpend = apiTotalSpend ?? visibleSpending.reduce((sum, c) => sum + Math.abs(c.total), 0);
 
   return (
     <div>
