@@ -9,6 +9,7 @@ export default function Layout({ children, currentPage, onNavigate, user, onLogo
     { key: 'accounts',     label: 'Accounts' },
     { key: 'connections',  label: 'Connections' },
     { key: 'categories',   label: 'Categories' },
+    { key: 'receipts',     label: 'Receipts' },
     { key: 'settings',     label: 'Settings' },
   ];
 

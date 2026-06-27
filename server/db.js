@@ -236,4 +236,19 @@ function migrate(db) {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_category_rules_user ON category_rules(user_id, enabled, priority DESC)`);
+
+  // Receipts — uploaded images matched to transactions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      original_name TEXT,
+      amount REAL,
+      description TEXT,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      matched_transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_receipts_user ON receipts(user_id, uploaded_at DESC)`);
 }

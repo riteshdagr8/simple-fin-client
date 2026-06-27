@@ -120,4 +120,15 @@ export const api = {
   getEmailSummarySettings: () => request('/settings/email-summary'),
   saveEmailSummarySettings: (data) =>
     request('/settings/email-summary', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Receipts
+  getReceipts: () => request('/receipts'),
+  getReceipt: (id) => request(`/receipts/${id}`),
+  uploadReceipt: (data) => request('/receipts/upload', { method: 'POST', body: JSON.stringify(data) }),
+  matchReceipt: (id, transactionId) =>
+    request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: transactionId }) }),
+  unmatchReceipt: (id) =>
+    request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: null }) }),
+  deleteReceipt: (id) => request(`/receipts/${id}`, { method: 'DELETE' }),
+  getReceiptImage: (id) => `${BASE}/receipts/${id}/image`,
 };

@@ -15,6 +15,7 @@ import authRouter from './routes/auth.js';
 import categoriesRouter from './routes/categories.js';
 import settingsRouter from './routes/settings.js';
 import rulesRouter from './routes/rules.js';
+import receiptsRouter from './routes/receipts.js';
 import { ensureSecret, DEFAULT_JWT_SECRET, DEFAULT_ENCRYPTION_KEY } from './boot-guard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +82,7 @@ app.use('/api/dashboard',     authMiddleware, dashboardRouter);
 app.use('/api/categories',    authMiddleware, categoriesRouter);
 app.use('/api/settings',      authMiddleware, settingsRouter);
 app.use('/api/rules',         authMiddleware, rulesRouter);
+app.use('/api/receipts',      authMiddleware, receiptsRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

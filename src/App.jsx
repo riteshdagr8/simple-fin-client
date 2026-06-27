@@ -11,6 +11,7 @@ import Connections from './pages/Connections.jsx';
 import Accounts from './pages/Accounts.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Categories from './pages/Categories.jsx';
+import Receipts from './pages/Receipts.jsx';
 import Settings from './pages/Settings.jsx';
 
 export const AuthContext = createContext(null);
@@ -21,6 +22,7 @@ const PAGES = {
   accounts:     { component: Accounts },
   transactions: { component: Transactions },
   categories:   { component: Categories },
+  receipts:     { component: Receipts },
   settings:     { component: Settings },
 };
 
