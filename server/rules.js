@@ -131,15 +131,8 @@ export function applyRulesToTransactions(userId, transactions) {
 // Returns { patterns: [...], total_transactions: N }
 export function buildPatternsForCategory(userId, categoryId, threshold = 0.6) {
   const db = getDb();
+  // Transactions don't have user_id directly — join through accounts/connections
   const txns = db.prepare(`
-    SELECT t.description
-    FROM transactions t
-    JOIN transaction_categories tc ON tc.transaction_id = t.id
-    WHERE tc.category_id = ? AND t.user_id = ?
-  `).all(categoryId, userId);
-
-  // Wait, transactions don't have user_id directly. Use accounts/connections join
-  const txns2 = db.prepare(`
     SELECT t.description
     FROM transactions t
     JOIN transaction_categories tc ON tc.transaction_id = t.id
@@ -148,7 +141,7 @@ export function buildPatternsForCategory(userId, categoryId, threshold = 0.6) {
     WHERE tc.category_id = ? AND c.user_id = ?
   `).all(categoryId, userId);
 
-  const descriptions = txns2.map(t => t.description);
+  const descriptions = txns.map(t => t.description);
   return {
     patterns: extractPatterns(descriptions, threshold),
     total_transactions: descriptions.length,
