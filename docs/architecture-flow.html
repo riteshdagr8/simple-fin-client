@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleFinClient — System Architecture & Flow</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --green: #4ade80;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --purple: #a78bfa;
+      --pink: #f472b6;
+      --orange: #fb923c;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent); }
+    h2 { font-size: 1.4rem; margin: 2rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--green); }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin: 1rem 0; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .card h3 { margin-top: 0; }
+    .card ul { padding-left: 1.2rem; }
+    .card li { margin: 0.3rem 0; color: var(--muted); }
+    .card li strong { color: var(--text); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .badge-blue { background: #1e3a5f; color: var(--accent); }
+    .badge-green { background: #14532d; color: var(--green); }
+    .badge-yellow { background: #713f12; color: var(--yellow); }
+    .badge-red { background: #7f1d1d; color: var(--red); }
+    .badge-purple { background: #3b0764; color: var(--purple); }
+
+    /* Flow Diagram */
+    .flow-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+    .flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 700px;
+    }
+    .flow-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+    .flow-node {
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 0.8rem 1.2rem;
+      text-align: center;
+      min-width: 140px;
+      position: relative;
+    }
+    .flow-node small { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 2px; }
+    .flow-node.client { border-color: var(--accent); }
+    .flow-node.server { border-color: var(--green); }
+    .flow-node.external { border-color: var(--orange); }
+    .flow-node.db { border-color: var(--purple); }
+    .flow-node.scheduler { border-color: var(--yellow); }
+    .flow-node.email { border-color: var(--pink); }
+    .flow-node.llm { border-color: var(--red); }
+
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.7rem;
+      padding: 0.3rem 0;
+    }
+    .arrow::before {
+      content: '';
+      width: 2px;
+      height: 20px;
+      background: var(--border);
+    }
+    .arrow::after {
+      content: '▼';
+      font-size: 0.6rem;
+    }
+    .arrow-label {
+      background: var(--surface);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      white-space: nowrap;
+    }
+
+    .flow-horizontal {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+    }
+    .flow-horizontal .arrow {
+      flex-direction: row;
+    }
+    .flow-horizontal .arrow::before {
+      width: 20px;
+      height: 2px;
+    }
+    .flow-horizontal .arrow::after {
+      content: '▶';
+    }
+
+    .section-label {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 0.5rem 0;
+    }
+    .section-label .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+    }
+    th, td {
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--accent); font-size: 0.85rem; }
+    td { color: var(--muted); font-size: 0.9rem; }
+    tr:hover td { color: var(--text); background: rgba(56, 189, 248, 0.03); }
+
+    .issue { padding: 0.8rem 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid; }
+    .issue-critical { border-color: var(--red); background: rgba(248, 113, 113, 0.05); }
+    .issue-warning { border-color: var(--yellow); background: rgba(251, 191, 36, 0.05); }
+    .issue-info { border-color: var(--accent); background: rgba(56, 189, 248, 0.05); }
+    .issue-title { font-weight: 600; margin-bottom: 0.3rem; }
+    .issue-desc { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<h1>SimpleFinClient</h1>
+<p class="subtitle">Personal Finance Manager — Architecture Review & System Flow</p>
+
+<!-- ==================== ARCHITECTURE OVERVIEW ==================== -->
+<h2>1. Architecture Overview</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>Frontend <span class="badge badge-blue">React 19</span></h3>
+    <ul>
+      <li><strong>Vite</strong> dev server (port 6173) + build tool</li>
+      <li><strong>Hash routing</strong> — no server-side route config needed</li>
+      <li><strong>AuthContext</strong> — JWT stored in localStorage</li>
+      <li><strong>2 themes</strong> — minimal / colorful via CSS custom properties</li>
+      <li><strong>Zero UI libraries</strong> — pure React components</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Backend <span class="badge badge-green">Express 5</span></h3>
+    <ul>
+      <li><strong>REST API</strong> — 8 route groups, all JWT-protected</li>
+      <li><strong>SQLite</strong> — WAL mode, foreign keys, 13 tables</li>
+      <li><strong>AES-256-GCM</strong> — secrets encrypted at rest</li>
+      <li><strong>Rate limiting</strong> — per-endpoint and per-connection</li>
+      <li><strong>Cron scheduler</strong> — auto-sync + email summaries</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>External Services <span class="badge badge-orange">Integrations</span></h3>
+    <ul>
+      <li><strong>SimpleFIN Bridge</strong> — bank transaction data (Open Banking)</li>
+      <li><strong>OpenAI / Anthropic</strong> — AI transaction categorization</li>
+      <li><strong>SMTP (Gmail)</strong> — verification, password reset, daily summaries</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Key Design Decisions</h3>
+    <ul>
+      <li><strong>Fire-and-forget sync</strong> — background, non-blocking</li>
+      <li><strong>3-tier categorization</strong> — rules → manual → LLM</li>
+      <li><strong>Job tracking</strong> — LLM jobs polled every 2s</li>
+      <li><strong>Token invalidation</strong> — password change kills old JWTs</li>
+      <li><strong>Dedupe indexes</strong> — prevents duplicate accounts/transactions</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== HIGH-LEVEL FLOW ==================== -->
+<h2>2. High-Level System Flow</h2>
+
+<div class="flow-container">
+  <div class="flow">
+
+    <!-- User Layer -->
+    <div class="section-label">
+      <div class="label">User Layer (Browser)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">React SPA<small>Hash Router</small></div>
+        <div class="arrow"><span class="arrow-label">JWT Bearer</span></div>
+        <div class="flow-node client">API Client<small>api.js</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">HTTP /api/*</span></div></div>
+
+    <!-- Server Layer -->
+    <div class="section-label">
+      <div class="label">Server Layer (Express)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node server">Helmet + CORS<small>Security</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Auth Middleware<small>JWT Verify</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Route Handlers<small>8 route groups</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">better-sqlite3</span></div></div>
+
+    <!-- Data Layer -->
+    <div class="section-label">
+      <div class="label">Data Layer</div>
+      <div class="flow-horizontal">
+        <div class="flow-node db">SQLite DB<small>finapp.db (WAL)</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Crypto Module<small>AES-256-GCM</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <!-- Integrations -->
+    <div class="section-label">
+      <div class="label">External Integrations</div>
+      <div class="flow-horizontal">
+        <div class="flow-node external">SimpleFIN Bridge<small>Bank Data API</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node llm">LLM Provider<small>OpenAI / Anthropic</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node email">SMTP Server<small>Gmail</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <!-- Scheduler Layer -->
+    <div class="section-label">
+      <div class="label">Scheduler Layer (node-cron)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node scheduler">Sync Scheduler<small>Every 15 min</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node scheduler">Email Scheduler<small>Every 5 min</small></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== SIMPLEFIN SYNC FLOW ==================== -->
+<h2>3. SimpleFIN Transaction Sync Flow</h2>
+
+<div class="flow-container">
+  <div class="flow">
+
+    <div class="flow-horizontal">
+      <div class="flow-node client">User enters Setup Token</div>
+      <div class="arrow"><span class="arrow-label">POST /api/connections</span></div>
+      <div class="flow-node server">Decode Base64 token</div>
+      <div class="arrow"><span class="arrow-label">POST claim URL</span></div>
+      <div class="flow-node external">SimpleFIN Bridge</div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">Returns access_url</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node server">Encrypt access_url<small>AES-256-GCM</small></div>
+      <div class="arrow"><span class="arrow-label">INSERT INTO connections</span></div>
+      <div class="flow-node db">SQLite</div>
+      <div class="arrow"><span class="arrow-label">Fire-and-forget</span></div>
+      <div class="flow-node server">syncConnection()</div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">syncConnection() — Runs in Background</div>
+      <div class="flow-horizontal">
+        <div class="flow-node server">Decrypt access_url</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Log sync start<small>sync_log</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Calculate start date<small>90d first, 1d after</small></div>
+        <div class="arrow"><span class="arrow-label">GET /accounts</span></div>
+        <div class="flow-node external">SimpleFIN API</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">Returns accounts[] + transactions[]</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node server">Upsert accounts<small>ON CONFLICT UPDATE</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Insert transactions<small>INSERT OR IGNORE</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Apply rules<small>auto-categorize</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Update sync_log</div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">Rate Limiting</div>
+      <div class="flow-horizontal">
+        <div class="flow-node scheduler">Every 15 min check</div>
+        <div class="arrow"><span class="arrow-label">for each connection</span></div>
+        <div class="flow-node server">canSyncConnection()?<small>max 24/day</small></div>
+        <div class="arrow"><span class="arrow-label">if due (interval_hours)</span></div>
+        <div class="flow-node server">syncConnection()<small>2s delay between</small></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== CATEGORIZATION FLOW ==================== -->
+<h2>4. Transaction Categorization Flow (3 Tiers)</h2>
+
+<div class="flow-container">
+  <div class="flow">
+
+    <!-- Tier 1 -->
+    <div class="section-label">
+      <div class="label">Tier 1 — Rules Engine (Automatic, runs after every sync)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node server">New transactions<small>from sync</small></div>
+        <div class="arrow"><span class="arrow-label">for each uncategorized txn</span></div>
+        <div class="flow-node server">Load enabled rules<small>ORDER BY priority DESC</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Check keyword match<small>word-boundary regex</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Check history match<small>pattern frequency</small></div>
+        <div class="arrow"><span class="arrow-label">first match wins</span></div>
+        <div class="flow-node db">INSERT transaction_categories</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <!-- Tier 2 -->
+    <div class="section-label">
+      <div class="label">Tier 2 — Manual (User-Initiated)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">User clicks category dropdown</div>
+        <div class="arrow"><span class="arrow-label">POST /:id/categorize</span></div>
+        <div class="flow-node server">Upsert category<small>source='manual'</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node db">transaction_categories</div>
+      </div>
+      <div style="margin-top:0.5rem" class="flow-horizontal">
+        <div class="flow-node client">Bulk select + assign</div>
+        <div class="arrow"><span class="arrow-label">POST /bulk-categorize</span></div>
+        <div class="flow-node server">Batch upsert<small>verify ownership</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node db">transaction_categories</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <!-- Tier 3 -->
+    <div class="section-label">
+      <div class="label">Tier 3 — LLM (User-Initiated, Background Job)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">User clicks "Run AI Categorize"</div>
+        <div class="arrow"><span class="arrow-label">POST /categorize-llm</span></div>
+        <div class="flow-node server">Create job row<small>categorize_jobs</small></div>
+        <div class="arrow"><span class="arrow-label">return 200 immediately</span></div>
+        <div class="flow-node server">runCategorizeJob()<small>background</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">runCategorizeJob() — Background Process</div>
+      <div class="flow-horizontal">
+        <div class="flow-node server">Fetch uncategorized txns<small>up to 200</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Fetch user categories</div>
+        <div class="arrow"><span class="arrow-label">POST /chat/completions</span></div>
+        <div class="flow-node llm">LLM Provider<small>OpenAI / Anthropic</small></div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">Returns category per line</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node server">Parse response<small>line-by-line or JSON</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Match to categories<small>case-insensitive</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Upsert results<small>source='llm'</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Update job status<small>done / failed</small></div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">Frontend polls /categorize-jobs/latest every 2s</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node client">CategorizeBanner<small>progress bar</small></div>
+      <div class="arrow"></div>
+      <div class="flow-node client">Success / Error<small>dismiss or retry</small></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== EMAIL SUMMARY FLOW ==================== -->
+<h2>5. Email Summary Flow</h2>
+
+<div class="flow-container">
+  <div class="flow">
+
+    <div class="flow-horizontal">
+      <div class="flow-node scheduler">Email Scheduler<small>every 5 min</small></div>
+      <div class="arrow"><span class="arrow-label">query due users</span></div>
+      <div class="flow-node db">email_summary_settings<small>WHERE enabled=1</small></div>
+      <div class="arrow"><span class="arrow-label">atomic claim</span></div>
+      <div class="flow-node server">sendSummaryEmail()</div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">buildSummaryData() — Queries</div>
+      <div class="flow-horizontal">
+        <div class="flow-node server">Total balance<small>SUM(balance)</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Per-account balances</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Category spending<small>SUM(negative amounts)</small></div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Today's transactions</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Week's transactions</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">Build HTML email</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node server">Nodemailer<small>SMTP transport</small></div>
+      <div class="arrow"><span class="arrow-label">sendmail</span></div>
+      <div class="flow-node email">Gmail SMTP</div>
+      <div class="arrow"></div>
+      <div class="flow-node client">User's Inbox</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== AUTH FLOW ==================== -->
+<h2>6. Authentication Flow</h2>
+
+<div class="flow-container">
+  <div class="flow">
+
+    <div class="section-label">
+      <div class="label">Registration</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">Register form<small>name, email, password</small></div>
+        <div class="arrow"><span class="arrow-label">POST /api/auth/register</span></div>
+        <div class="flow-node server">Validate (10+ chars, letter+number)</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">bcrypt.hash(password, 12)</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">Create user + seed categories</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">signToken() → JWT (7d)</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">Login → API Request → Token Validation</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">Login form</div>
+        <div class="arrow"><span class="arrow-label">POST /api/auth/login</span></div>
+        <div class="flow-node server">bcrypt.compare()</div>
+        <div class="arrow"></div>
+        <div class="flow-node server">signToken()</div>
+        <div class="arrow"></div>
+        <div class="flow-node client">Store in localStorage</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">on every API request</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node client">Authorization: Bearer {jwt}</div>
+      <div class="arrow"></div>
+      <div class="flow-node server">authMiddleware<small>verify JWT</small></div>
+      <div class="arrow"><span class="arrow-label">check password_changed_at</span></div>
+      <div class="flow-node server">Reject if iat < changed_at</div>
+      <div class="arrow"></div>
+      <div class="flow-node server">req.user = {userId, email}</div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"></div></div>
+
+    <div class="section-label">
+      <div class="label">Password Reset (Invalidates All Existing JWTs)</div>
+      <div class="flow-horizontal">
+        <div class="flow-node client">Forgot password form</div>
+        <div class="arrow"><span class="arrow-label">POST /api/auth/forgot-password</span></div>
+        <div class="flow-node server">Generate token (1hr)</div>
+        <div class="arrow"></div>
+        <div class="flow-node email">Send reset email</div>
+      </div>
+    </div>
+
+    <div class="flow-row"><div class="arrow"><span class="arrow-label">user clicks link</span></div></div>
+
+    <div class="flow-horizontal">
+      <div class="flow-node client">Reset password form</div>
+      <div class="arrow"><span class="arrow-label">POST /api/auth/reset-password</span></div>
+      <div class="flow-node server">Update password_hash</div>
+      <div class="arrow"></div>
+      <div class="flow-node server">Set password_changed_at<small>kills old JWTs</small></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== DATABASE SCHEMA ==================== -->
+<h2>7. Database Schema (13 Tables)</h2>
+
+<div class="flow-container">
+  <table>
+    <tr><th>Table</th><th>Purpose</th><th>Key Relationships</th></tr>
+    <tr><td><code>users</code></td><td>Authentication & profile</td><td>Has many: connections, categories, settings</td></tr>
+    <tr><td><code>email_tokens</code></td><td>Email verification tokens (24hr)</td><td>FK → users</td></tr>
+    <tr><td><code>reset_tokens</code></td><td>Password reset tokens (1hr)</td><td>FK → users</td></tr>
+    <tr><td><code>connections</code></td><td>Bank connections (encrypted access_url)</td><td>Has many: accounts, sync_log</td></tr>
+    <tr><td><code>accounts</code></td><td>Bank accounts with balances</td><td>FK → connections; has many: transactions</td></tr>
+    <tr><td><code>transactions</code></td><td>Financial transactions</td><td>FK → accounts; M:1 with categories via junction</td></tr>
+    <tr><td><code>categories</code></td><td>Spending categories (icon, color)</td><td>Has many: rules, transaction_categories</td></tr>
+    <tr><td><code>transaction_categories</code></td><td>Maps txns → categories (source, confidence)</td><td>FK → transactions, categories</td></tr>
+    <tr><td><code>category_rules</code></td><td>Auto-categorization rules</td><td>FK → categories, users</td></tr>
+    <tr><td><code>user_llm_config</code></td><td>LLM API settings per user</td><td>FK → users; encrypted api_key</td></tr>
+    <tr><td><code>user_settings</code></td><td>Sync interval, UI theme</td><td>FK → users</td></tr>
+    <tr><td><code>email_summary_settings</code></td><td>Email summary config</td><td>FK → users</td></tr>
+    <tr><td><code>sync_log</code></td><td>Sync operation audit trail</td><td>FK → connections</td></tr>
+    <tr><td><code>categorize_jobs</code></td><td>LLM job progress tracker</td><td>FK → users</td></tr>
+  </table>
+</div>
+
+<!-- ==================== CODE REVIEW ==================== -->
+<h2>8. Code Review</h2>
+
+<h3>Critical Issues</h3>
+
+<div class="issue issue-critical">
+  <div class="issue-title">🔴 Start scripts contain hardcoded secrets</div>
+  <div class="issue-desc">
+    <code>start-express.ps1</code> has JWT_SECRET, ENCRYPTION_KEY, and SMTP credentials in plaintext. While the file is gitignored, the content is visible in the workspace. These should come from <code>.env</code> only.
+  </div>
+</div>
+
+<div class="issue issue-critical">
+  <div class="issue-title">🔴 Client/server password validation mismatch</div>
+  <div class="issue-desc">
+    Register.jsx requires 8 chars minimum, but server requires 10+ chars with at least one letter and one number. Users can pass client validation and get rejected by the server. Same issue in ResetPassword.jsx (client: 8 chars, server: 10+).
+  </div>
+</div>
+
+<div class="issue issue-critical">
+  <div class="issue-title">🔴 No CSRF protection — JWT in localStorage</div>
+  <div class="issue-desc">
+    JWT tokens stored in localStorage are vulnerable to XSS attacks. Consider HttpOnly cookies with SameSite=Strict for the auth token, or add CSRF token validation.
+  </div>
+</div>
+
+<h3>Warnings</h3>
+
+<div class="issue issue-warning">
+  <div class="issue-title">🟡 Email verification is effectively disabled</div>
+  <div class="issue-desc">
+    Users are created with <code>email_verified=1</code> at registration (line 72 of auth.js). The verification email is sent but the user is already fully authenticated. The VerifyEmail page exists but serves no real purpose.
+  </div>
+</div>
+
+<div class="issue issue-warning">
+  <div class="issue-title">🟡 Dead code in rules.js</div>
+  <div class="issue-desc">
+    <code>buildPatternsForCategory()</code> has two queries where the first (<code>txns</code>) references <code>t.user_id</code> which doesn't exist on the transactions table. The variable <code>txns</code> is never used — dead code that would throw if reached.
+  </div>
+</div>
+
+<div class="issue issue-warning">
+  <div class="issue-title">🟡 No token cleanup for expired email_tokens and reset_tokens</div>
+  <div class="issue-desc">
+    Expired tokens accumulate in the database forever. Add a periodic cleanup job or prune on startup.
+  </div>
+</div>
+
+<div class="issue issue-warning">
+  <div class="issue-title">🟡 /api/seed available in production</div>
+  <div class="issue-desc">
+    The seed endpoint creates demo data and is auth-protected, but available in production mode. Consider disabling when <code>NODE_ENV=production</code>.
+  </div>
+</div>
+
+<div class="issue issue-warning">
+  <div class="issue-title">🟡 Single SQLite database for all users</div>
+  <div class="issue-desc">
+    All users share one <code>finapp.db</code>. A compromised database exposes all users' financial data. The design doc describes a planned per-user DB architecture but it's not implemented.
+  </div>
+</div>
+
+<h3>Improvements</h3>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 No test suite</div>
+  <div class="issue-desc">
+    Zero test files exist. Critical paths to test: crypto.js (encrypt/decrypt roundtrip), rules.js (pattern extraction), llm.js (response parsing), and route integration tests.
+  </div>
+</div>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 No health check endpoint</div>
+  <div class="issue-desc">
+    Add <code>GET /api/health</code> that returns { status: 'ok', db: 'connected' } for monitoring and container orchestration.
+  </div>
+</div>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 No graceful shutdown</div>
+  <div class="issue-desc">
+    No SIGTERM handler to close the database connection and stop cron jobs cleanly. Important for production deployments.
+  </div>
+</div>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 .env.example missing ENCRYPTION_KEY</div>
+  <div class="issue-desc">
+    The boot guard requires ENCRYPTION_KEY but it's not documented in .env.example. New users will get a startup error without knowing why.
+  </div>
+</div>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 Incomplete auth-service</div>
+  <div class="issue-desc">
+    The <code>auth-service/</code> directory references files that don't exist (<code>./db.js</code>, <code>./keys.js</code>). Either complete it or remove it to avoid confusion.
+  </div>
+</div>
+
+<div class="issue issue-info">
+  <div class="issue-title">🔵 WebSocket for LLM job progress</div>
+  <div class="issue-desc">
+    Current polling (every 2s) is functional but wasteful. Consider Server-Sent Events or WebSocket for real-time job updates.
+  </div>
+</div>
+
+<!-- ==================== STRENGTHS ==================== -->
+<h2>9. What's Done Well</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>Security</h3>
+    <ul>
+      <li>AES-256-GCM encryption for secrets at rest</li>
+      <li>Boot guard refuses default/missing secrets</li>
+      <li>Rate limiting on auth endpoints</li>
+      <li>CSP headers via Helmet</li>
+      <li>Explicit CORS allowlist</li>
+      <li>Token invalidation on password change</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Architecture</h3>
+    <ul>
+      <li>Clean separation: routes / services / middleware</li>
+      <li>Singleton DB with WAL mode</li>
+      <li>Fire-and-forget sync (non-blocking UI)</li>
+      <li>Job tracking for background LLM work</li>
+      <li>3-tier categorization (rules → manual → LLM)</li>
+      <li>Dedupe indexes prevent data corruption</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Developer Experience</h3>
+    <ul>
+      <li>Concurrent dev server (Express + Vite)</li>
+      <li>Seed data endpoint for testing</li>
+      <li>Comprehensive .env.example</li>
+      <li>SQL migration pattern (ALTER TABLE on startup)</li>
+      <li>Clean React component architecture</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Feature Completeness</h3>
+    <ul>
+      <li>Full auth flow (register, login, reset, verify)</li>
+      <li>SimpleFIN integration with rate limiting</li>
+      <li>AI categorization with multiple providers</li>
+      <li>Rules engine for auto-categorization</li>
+      <li>Email summaries with configurable content</li>
+      <li>CSV import for manual transactions</li>
+      <li>Multi-theme support</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

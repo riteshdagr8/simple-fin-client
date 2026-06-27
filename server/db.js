@@ -13,8 +13,21 @@ export function getDb() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     migrate(db);
+    cleanupExpiredTokens(db);
   }
   return db;
+}
+
+function cleanupExpiredTokens(db) {
+  try {
+    const emailCount = db.prepare("DELETE FROM email_tokens WHERE expires_at < datetime('now')").run().changes;
+    const resetCount = db.prepare("DELETE FROM reset_tokens WHERE expires_at < datetime('now')").run().changes;
+    if (emailCount > 0 || resetCount > 0) {
+      console.log(`[CLEANUP] Removed ${emailCount} expired email tokens, ${resetCount} expired reset tokens`);
+    }
+  } catch {
+    // Migration may not have run yet — ignore cleanup errors
+  }
 }
 
 function migrate(db) {

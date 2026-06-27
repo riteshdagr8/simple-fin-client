@@ -16,7 +16,7 @@ export default function ResetPassword({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!token) { setError('Invalid reset link.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (password.length < 10) { setError('Password must be at least 10 characters with a letter and number.'); return; }
     setStatus('loading');
     setError('');
     try {
@@ -48,7 +48,7 @@ export default function ResetPassword({ onLogin }) {
               <div className="form-group">
                 <label>New Password</label>
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  required minLength={8} autoFocus placeholder="At least 8 characters" />
+                  required minLength={10} autoFocus placeholder="At least 10 characters with a letter and number" />
               </div>
               <button type="submit" className="primary" disabled={status === 'loading'} style={{ width: '100%' }}>
                 {status === 'loading' ? <><span className="spinner" /> Saving...</> : 'Save New Password'}

@@ -82,12 +82,24 @@ app.use('/api/categories',    authMiddleware, categoriesRouter);
 app.use('/api/settings',      authMiddleware, settingsRouter);
 app.use('/api/rules',         authMiddleware, rulesRouter);
 
-// Seed data endpoint (dev only — attaches to current user)
-app.post('/api/seed', authMiddleware, async (req, res) => {
-  const db = (await import('./db.js')).getDb();
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  try {
+    const db = getDb();
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ok', db: 'connected', uptime: process.uptime() });
+  } catch {
+    res.status(503).json({ status: 'error', db: 'disconnected' });
+  }
+});
 
-  const now = Date.now();
-  const day = 86400000;
+// Seed data endpoint (dev only — attaches to current user)
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/seed', authMiddleware, async (req, res) => {
+    const db = (await import('./db.js')).getDb();
+
+    const now = Date.now();
+    const day = 86400000;
 
   // Remove existing seed connection for a clean slate
   db.prepare("DELETE FROM connections WHERE access_url = 'seed://demo:demo@seed.local/fake'").run();
@@ -153,10 +165,9 @@ app.post('/api/seed', authMiddleware, async (req, res) => {
   db.prepare('UPDATE connections SET last_sync_at = datetime(\'now\'), last_error = NULL WHERE id = ?').run(connId);
 
   res.json({ message: 'Seed data created', connectionId: connId, accounts: accounts.length, transactions: totalTxns });
-});
+    }); // end seed endpoint (dev only)
+} // end if (NODE_ENV !== production)
 
-// Serve React build
-app.use(express.static(path.join(__dirname, '..', 'dist')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
@@ -164,8 +175,21 @@ app.get('/{*rest}', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
+// Start server — store reference for graceful shutdown
+const server = app.listen(PORT, () => {
   console.log(`FinApp server running on http://localhost:${PORT}`);
   initScheduler();
   initEmailSummaryScheduler();
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[SHUTDOWN] SIGTERM received — shutting down gracefully...');
+  const { getDb } = require('./db.js');
+  try { getDb().close(); } catch {}
+  try { require('node-cron').stopAll(); } catch {}
+  server.close(() => {
+    console.log('[SHUTDOWN] Server closed');
+    process.exit(0);
+  });
 });

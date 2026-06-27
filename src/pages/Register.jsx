@@ -43,7 +43,7 @@ export default function Register({ onLogin }) {
           <div className="form-group">
             <label>Password</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              required minLength={8} placeholder="At least 8 characters" />
+              required minLength={10} placeholder="At least 10 characters with a letter and number" />
           </div>
           <button type="submit" className="primary" disabled={loading} style={{ width: '100%' }}>
             {loading ? <><span className="spinner" /> Creating account...</> : 'Create Account'}
