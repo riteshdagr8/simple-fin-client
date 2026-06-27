@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
-import { exchangeToken, fetchAccounts } from '../simplefin.js';
+import { exchangeToken, fetchAccounts, SimpleFinAuthError } from '../simplefin.js';
 import { canSyncConnection, getStartDateForSync, MAX_SYNCS_PER_DAY } from '../sync-tracker.js';
 import { encrypt, decrypt } from '../crypto.js';
 
@@ -205,10 +205,43 @@ export async function syncConnection(connectionId, userId, source = 'manual') {
     }
   } catch (err) {
     const failedAt = new Date().toISOString();
+    const isReauth = err instanceof SimpleFinAuthError;
+
     db.prepare(`
       UPDATE sync_log SET completed_at = ?, status = 'failed', error_message = ? WHERE id = ?
     `).run(failedAt, err.message, logId);
-    db.prepare('UPDATE connections SET last_error = ? WHERE id = ?').run(err.message, connectionId);
+
+    const errorMsg = isReauth
+      ? `Reauthentication required: ${err.message}`
+      : err.message;
+    db.prepare('UPDATE connections SET last_error = ? WHERE id = ?').run(errorMsg, connectionId);
+
+    if (isReauth) {
+      // Send email alert to the user about reauthentication
+      try {
+        const user = db.prepare('SELECT email, name FROM users WHERE id = ?').get(userId);
+        if (user?.email) {
+          const { sendMail } = await import('../email.js');
+          const conn = db.prepare('SELECT name FROM connections WHERE id = ?').get(connectionId);
+          const connName = conn?.name || 'your bank connection';
+          const settingsUrl = `${process.env.APP_URL || 'http://localhost:4200'}/#/connections`;
+          const html = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+              <h2 style="color: #dc2626;">⚠️ Bank Connection Needs Reauthentication</h2>
+              <p>Hi ${user.name || 'there'},</p>
+              <p>Our automated sync for <strong>${connName}</strong> failed with an authentication error. This means SimpleFIN Bridge can no longer access your bank data.</p>
+              <p><strong>What to do:</strong> Go to your Connections page and re-add the connection with a fresh setup token from SimpleFIN Bridge.</p>
+              <p><a href="${settingsUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">Go to Connections</a></p>
+              <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;">
+              <p style="color:#9ca3af;font-size:12px;">Sent by FinApp. <a href="${settingsUrl}">Manage email preferences</a></p>
+            </div>`;
+          await sendMail(user.email, `Action needed: ${connName} needs reauthentication`, html);
+        }
+      } catch (emailErr) {
+        console.error('[SYNC] Failed to send reauth alert email:', emailErr.message);
+      }
+    }
+
     throw err;
   }
 }

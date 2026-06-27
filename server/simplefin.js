@@ -1,3 +1,11 @@
+export class SimpleFinAuthError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'SimpleFinAuthError';
+    this.status = status;
+  }
+}
+
 function buildClaimUrl(decoded) {
   // If it's already a valid URL, use it as-is
   if (/^https?:\/\//.test(decoded)) return decoded;
@@ -66,6 +74,12 @@ export async function fetchAccounts(accessUrl, startDate) {
   const response = await fetch(url, { headers: { Authorization: auth } });
   if (!response.ok) {
     const text = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new SimpleFinAuthError(
+        `SimpleFIN authentication failed (${response.status}): ${text}`,
+        response.status
+      );
+    }
     throw new Error(`Failed to fetch accounts: ${response.status} ${response.statusText} — ${text}`);
   }
   const data = await response.json();

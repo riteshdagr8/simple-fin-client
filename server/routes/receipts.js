@@ -34,8 +34,12 @@ router.get('/', (req, res) => {
 // Get a single receipt + candidate transactions for matching
 router.get('/:id', (req, res) => {
   const db = getDb();
-  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.userId);
+  const receipt = db.prepare(`
+    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
+    FROM receipts r
+    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    WHERE r.id = ? AND r.user_id = ?
+  `).get(req.params.id, req.user.userId);
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
   // Find candidate transactions with matching amount (if receipt has an amount)
