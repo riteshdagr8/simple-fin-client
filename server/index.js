@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initScheduler, initEmailSummaryScheduler } from './scheduler.js';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { authMiddleware, optionalAuth } from './middleware/auth.js';
 import connectionsRouter from './routes/connections.js';
 import accountsRouter from './routes/accounts.js';
@@ -170,18 +171,31 @@ if (process.env.NODE_ENV !== 'production') {
     }); // end seed endpoint (dev only)
 } // end if (NODE_ENV !== production)
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-});
-app.get('/{*rest}', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-});
+if (process.env.NODE_ENV !== 'production') {
+  // In development, proxy all non-API requests to the Vite dev server
+  app.use('/', createProxyMiddleware({
+    target: 'http://localhost:6173',
+    changeOrigin: true,
+    ws: true,
+    logLevel: 'silent',
+  }));
+} else {
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  });
+  app.get('/{*rest}', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  });
+}
 
 // Start server — store reference for graceful shutdown
 const server = app.listen(PORT, () => {
   console.log(`FinApp server running on http://localhost:${PORT}`);
   initScheduler();
   initEmailSummaryScheduler();
+  import('./receipt-watch.js').then(({ initReceiptWatchers }) => {
+    initReceiptWatchers();
+  });
 });
 
 // Graceful shutdown

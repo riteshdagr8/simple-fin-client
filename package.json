@@ -11,21 +11,28 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",
+    "chokidar": "^5.0.0",
     "cors": "^2.8.5",
     "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.5.2",
+    "fuse.js": "^7.4.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
+    "multer": "^2.2.0",
     "node-cron": "^4.4.1",
     "nodemailer": "^9.0.1",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "pdf-parse": "^2.4.5",
+    "resend": "^6.16.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^10.0.3",
+    "http-proxy-middleware": "^4.1.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "vite": "^6.3.5"

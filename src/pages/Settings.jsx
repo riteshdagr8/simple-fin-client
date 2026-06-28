@@ -22,6 +22,7 @@ export default function Settings({ setTheme }) {
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState(null);
   const [showCheckWarning, setShowCheckWarning] = useState(false);
+  const [useLlmForReceipts, setUseLlmForReceipts] = useState(false);
 
   const [syncInterval, setSyncInterval] = useState(2);
   const [syncSaving, setSyncSaving] = useState(false);
@@ -48,6 +49,7 @@ export default function Settings({ setTheme }) {
           setProvider(cfg.provider || 'openai');
           setBaseUrl(cfg.baseUrl || PROVIDERS.find(p => p.id === (cfg.provider || 'openai'))?.defaultUrl || '');
           setModel(cfg.model || 'gpt-4o-mini');
+          setUseLlmForReceipts(!!cfg.useLlmForReceipts);
         }
       })
       .catch(err => setError(err.message))
@@ -91,6 +93,7 @@ export default function Settings({ setTheme }) {
         provider,
         baseUrl: baseUrl || PROVIDERS.find(p => p.id === provider)?.defaultUrl,
         model,
+        useLlmForReceipts,
       };
       // Only send apiKey if user typed a new one
       if (apiKey.trim()) payload.apiKey = apiKey.trim();
@@ -232,6 +235,18 @@ export default function Settings({ setTheme }) {
               {provider === 'anthropic' && 'Recommended: claude-3-5-haiku-20241022 (fast, accurate)'}
               {provider === 'openrouter' && 'Try: openai/gpt-4o-mini or anthropic/claude-3-haiku'}
               {provider === 'custom' && 'Enter the model name your server uses (e.g. llama3, gpt-4o-mini)'}
+            </p>
+          </div>
+
+          <div className="form-group">
+            <label className="checkbox-row">
+              <input type="checkbox" checked={useLlmForReceipts}
+                onChange={e => setUseLlmForReceipts(e.target.checked)} />
+              <span>Use LLM for receipt matching</span>
+            </label>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4, marginLeft: 24 }}>
+              When enabled, the LLM will help match receipts to transactions using OCR-extracted data.
+              This may improve accuracy but uses additional API calls.
             </p>
           </div>
 

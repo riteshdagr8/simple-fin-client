@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { getDb } from '../db.js';
+import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import crypto from 'crypto';
+import { getDb } from '../db.js';
+import { processReceiptFile } from '../receipt-processor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIPTS_DIR = path.join(__dirname, '..', '..', 'data', 'receipts');
@@ -12,6 +13,35 @@ const RECEIPTS_DIR = path.join(__dirname, '..', '..', 'data', 'receipts');
 if (!fs.existsSync(RECEIPTS_DIR)) {
   fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
 }
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const userDir = path.join(RECEIPTS_DIR, req.user.userId.toString());
+    if (!fs.existsSync(userDir)) {
+      fs.mkdirSync(userDir, { recursive: true });
+    }
+    cb(null, userDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'application/pdf'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only images and PDFs are allowed.'));
+    }
+  },
+});
 
 const router = Router();
 
@@ -42,55 +72,78 @@ router.get('/:id', (req, res) => {
   `).get(req.params.id, req.user.userId);
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
-  // Find candidate transactions with matching amount (if receipt has an amount)
+  // Find candidate transactions
   let candidates = [];
-  if (receipt.amount != null) {
+  if (receipt.extracted_total != null || receipt.amount != null) {
+    const amount = receipt.extracted_total || receipt.amount;
+    const dateFilter = receipt.extracted_date
+      ? `AND t.posted >= datetime(?, '-3 days') AND t.posted <= datetime(?, '+3 days')`
+      : '';
+
+    const params = [req.user.userId, Math.abs(amount)];
+    if (receipt.extracted_date) {
+      params.push(receipt.extracted_date, receipt.extracted_date);
+    }
+
     candidates = db.prepare(`
       SELECT t.id, t.posted, t.amount, t.description, a.name as account_name
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
       JOIN connections c ON c.id = a.connection_id
-      WHERE c.user_id = ? AND t.amount = ? AND (a.is_hidden IS NULL OR a.is_hidden = 0)
+      WHERE c.user_id = ? AND ABS(t.amount) = ? ${dateFilter} AND (a.is_hidden IS NULL OR a.is_hidden = 0)
       ORDER BY t.posted DESC
       LIMIT 20
-    `).all(req.user.userId, receipt.amount);
+    `).all(...params);
   }
 
   res.json({ ...receipt, candidates });
 });
 
-// Upload a receipt (handled via multipart-ish: base64 data in JSON body)
-router.post('/upload', (req, res) => {
-  const { filename, originalName, data, amount, description } = req.body;
-  if (!data || !filename) {
-    return res.status(400).json({ error: 'filename and data (base64) are required' });
+// Upload a receipt
+router.post('/upload', upload.single('receipt'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const db = getDb();
+    const { amount, description } = req.body;
+
+    const parsedAmount = amount ? parseFloat(amount) : null;
+    if (parsedAmount != null && isNaN(parsedAmount)) {
+      return res.status(400).json({ error: 'amount must be a number' });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const result = db.prepare(`
+      INSERT INTO receipts (user_id, filename, original_name, file_type, amount, description, ocr_status)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending')
+    `).run(
+      req.user.userId,
+      req.file.filename,
+      req.file.originalname,
+      ext.slice(1),
+      parsedAmount,
+      description || null
+    );
+
+    const receiptId = result.lastInsertRowid;
+
+    // Process asynchronously
+    processReceiptFile(req.user.userId, receiptId, req.file.path).catch(err => {
+      console.error('[RECEIPT] Processing failed:', err);
+    });
+
+    res.status(201).json({
+      id: receiptId,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      amount: parsedAmount,
+    });
+  } catch (err) {
+    console.error('[RECEIPT] Upload error:', err);
+    res.status(500).json({ error: err.message });
   }
-
-  // Validate amount if provided
-  const parsedAmount = amount != null ? Number(amount) : null;
-  if (parsedAmount != null && isNaN(parsedAmount)) {
-    return res.status(400).json({ error: 'amount must be a number' });
-  }
-
-  // Save image to disk
-  const buffer = Buffer.from(data, 'base64');
-  const ext = path.extname(filename) || '.jpg';
-  const safeFilename = crypto.randomBytes(8).toString('hex') + ext;
-  const filePath = path.join(RECEIPTS_DIR, safeFilename);
-  fs.writeFileSync(filePath, buffer);
-
-  const db = getDb();
-  const result = db.prepare(`
-    INSERT INTO receipts (user_id, filename, original_name, amount, description)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(req.user.userId, safeFilename, originalName || filename, parsedAmount, description || null);
-
-  res.status(201).json({
-    id: result.lastInsertRowid,
-    filename: safeFilename,
-    originalName: originalName || filename,
-    amount: parsedAmount,
-  });
 });
 
 // Match a receipt to a transaction
@@ -131,22 +184,22 @@ router.delete('/:id', (req, res) => {
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
   // Delete file from disk
-  const filePath = path.join(RECEIPTS_DIR, receipt.filename);
+  const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
   db.prepare('DELETE FROM receipts WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-// Serve receipt images
-router.get('/:id/image', (req, res) => {
+// Serve receipt files
+router.get('/:id/file', (req, res) => {
   const db = getDb();
-  const receipt = db.prepare('SELECT filename FROM receipts WHERE id = ? AND user_id = ?')
+  const receipt = db.prepare('SELECT filename, file_type FROM receipts WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.userId);
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
-  const filePath = path.join(RECEIPTS_DIR, receipt.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Image file not found' });
+  const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
 
   res.sendFile(filePath);
 });

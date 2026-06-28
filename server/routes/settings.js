@@ -24,11 +24,12 @@ router.get('/llm', (req, res) => {
     baseUrl: config.base_url,
     model: config.model,
     apiKeyHint: decryptedKey ? maskValue(decryptedKey) : '',
+    useLlmForReceipts: !!config.use_llm_for_receipts,
   });
 });
 
 router.put('/llm', (req, res) => {
-  const { provider, baseUrl, apiKey, model } = req.body;
+  const { provider, baseUrl, apiKey, model, useLlmForReceipts } = req.body;
   const db = getDb();
 
   const existing = db.prepare('SELECT * FROM user_llm_config WHERE user_id = ?').get(req.user.userId);
@@ -44,21 +45,25 @@ router.put('/llm', (req, res) => {
     finalKey = encrypt(apiKey.trim());
   }
 
+  const useLlmForReceiptsValue = useLlmForReceipts !== undefined ? (useLlmForReceipts ? 1 : 0) : existing?.use_llm_for_receipts || 0;
+
   db.prepare(`
-    INSERT INTO user_llm_config (user_id, provider, base_url, api_key, model, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO user_llm_config (user_id, provider, base_url, api_key, model, use_llm_for_receipts, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET
       provider = excluded.provider,
       base_url = excluded.base_url,
       api_key = excluded.api_key,
       model = excluded.model,
+      use_llm_for_receipts = excluded.use_llm_for_receipts,
       updated_at = datetime('now')
   `).run(
     req.user.userId,
     provider || existing?.provider || 'openai',
     baseUrl || existing?.base_url || 'https://api.openai.com/v1',
     finalKey,
-    model || existing?.model || 'gpt-4o-mini'
+    model || existing?.model || 'gpt-4o-mini',
+    useLlmForReceiptsValue
   );
   res.json({ message: 'LLM config saved' });
 });

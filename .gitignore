@@ -6,3 +6,4 @@ dist/
 *.db-wal
 start-express.ps1
 start-vite.ps1
+eng.traineddata

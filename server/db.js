@@ -251,4 +251,27 @@ function migrate(db) {
     );
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_receipts_user ON receipts(user_id, uploaded_at DESC)`);
+
+  // Migration: add OCR/matching columns to receipts
+  const receiptCols = db.prepare("PRAGMA table_info(receipts)").all();
+  const receiptMigrations = [
+    { name: 'file_type', sql: "ALTER TABLE receipts ADD COLUMN file_type TEXT" },
+    { name: 'extracted_total', sql: "ALTER TABLE receipts ADD COLUMN extracted_total REAL" },
+    { name: 'extracted_vendor', sql: "ALTER TABLE receipts ADD COLUMN extracted_vendor TEXT" },
+    { name: 'extracted_date', sql: "ALTER TABLE receipts ADD COLUMN extracted_date TEXT" },
+    { name: 'ocr_text', sql: "ALTER TABLE receipts ADD COLUMN ocr_text TEXT" },
+    { name: 'ocr_status', sql: "ALTER TABLE receipts ADD COLUMN ocr_status TEXT DEFAULT 'pending'" },
+    { name: 'match_score', sql: "ALTER TABLE receipts ADD COLUMN match_score REAL" },
+  ];
+  for (const m of receiptMigrations) {
+    if (!receiptCols.some(c => c.name === m.name)) {
+      db.exec(m.sql);
+    }
+  }
+
+  // Migration: add use_llm_for_receipts to user_llm_config
+  const llmCols = db.prepare("PRAGMA table_info(user_llm_config)").all();
+  if (!llmCols.some(c => c.name === 'use_llm_for_receipts')) {
+    db.exec("ALTER TABLE user_llm_config ADD COLUMN use_llm_for_receipts INTEGER DEFAULT 0");
+  }
 }

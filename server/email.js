@@ -1,42 +1,34 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import crypto from 'crypto';
 import { getDb } from './db.js';
 import { buildSummaryData } from './scheduler.js';
 
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || 'FinApp <noreply@finapp.local>';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || 'FinApp <noreply@finapp.local>';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
-console.log(`[EMAIL] SMTP_USER: "${SMTP_USER}" | SMTP_HOST: "${SMTP_HOST}" | APP_URL: "${APP_URL}"`);
+console.log(`[EMAIL] Resend configured: ${!!RESEND_API_KEY} | FROM: "${RESEND_FROM}" | APP_URL: "${APP_URL}"`);
 
-let transporter;
+let resend;
 
-function getTransporter() {
-  if (!transporter) {
-    if (!SMTP_USER || !SMTP_PASS) {
-      console.warn('Email not configured: SMTP_USER and SMTP_PASS env vars not set. Emails will be logged to console.');
+function getResend() {
+  if (!resend) {
+    if (!RESEND_API_KEY) {
+      console.warn('Email not configured: RESEND_API_KEY env var not set. Emails will be logged to console.');
       return null;
     }
-    transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-    });
+    resend = new Resend(RESEND_API_KEY);
   }
-  return transporter;
+  return resend;
 }
 
-function sendMail(to, subject, html) {
-  const tp = getTransporter();
-  if (!tp) {
+async function sendMail(to, subject, html) {
+  const r = getResend();
+  if (!r) {
     console.log(`[EMAIL] To: ${to}\nSubject: ${subject}\n${html.replace(/<[^>]+>/g, '')}`);
     return Promise.resolve();
   }
-  return tp.sendMail({ from: SMTP_FROM, to, subject, html });
+  return r.emails.send({ from: RESEND_FROM, to, subject, html });
 }
 
 // Escape user-controlled values before inserting into HTML

@@ -124,11 +124,22 @@ export const api = {
   // Receipts
   getReceipts: () => request('/receipts'),
   getReceipt: (id) => request(`/receipts/${id}`),
-  uploadReceipt: (data) => request('/receipts/upload', { method: 'POST', body: JSON.stringify(data) }),
+  uploadReceipt: (formData) => {
+    const headers = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    return fetch(`${BASE}/receipts/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }).then(res => {
+      if (!res.ok) return res.json().then(body => { throw new Error(body.error || `HTTP ${res.status}`); });
+      return res.json();
+    });
+  },
   matchReceipt: (id, transactionId) =>
     request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: transactionId }) }),
   unmatchReceipt: (id) =>
     request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: null }) }),
   deleteReceipt: (id) => request(`/receipts/${id}`, { method: 'DELETE' }),
-  getReceiptImage: (id) => `${BASE}/receipts/${id}/image`,
+  getReceiptFile: (id) => `${BASE}/receipts/${id}/file`,
 };

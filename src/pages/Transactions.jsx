@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api.js';
 import CategorizeBanner from '../components/CategorizeBanner.jsx';
 
@@ -433,45 +433,61 @@ export default function Transactions() {
 
 function CategorySelector({ txnId, categoryId, categoryName, categoryIcon, categoryColor, categories, onAssign, assigning }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef(null);
 
-  if (categoryId) {
-    return (
-      <span
-        style={{
-          fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
-          background: (categoryColor || '#9ca3af') + '22',
-          color: categoryColor || 'var(--text)',
-          fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4,
-        }}
-        onClick={() => setOpen(!open)}
-        title="Click to change category"
-      >
-        {categoryIcon} {categoryName}
-        {assigning ? ' ⏳' : ''}
-      </span>
-    );
-  }
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const trigger = categoryId ? (
+    <span
+      onClick={() => setOpen(!open)}
+      style={{
+        fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
+        background: (categoryColor || '#9ca3af') + '22',
+        color: categoryColor || 'var(--text)',
+        fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4,
+      }}
+      title="Click to change category"
+    >
+      {categoryIcon} {categoryName}
+      {assigning ? ' ⏳' : ''}
+    </span>
+  ) : (
+    <button
+      onClick={() => setOpen(!open)}
+      style={{ fontSize: '0.75rem', padding: '2px 8px', background: 'none', border: '1px dashed var(--border)', borderRadius: 10, cursor: 'pointer', color: 'var(--text-secondary)' }}
+    >
+      + Assign{assigning ? ' ⏳' : ''}
+    </button>
+  );
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{ fontSize: '0.75rem', padding: '2px 8px', background: 'none', border: '1px dashed var(--border)', borderRadius: 10, cursor: 'pointer', color: 'var(--text-secondary)' }}
-      >
-        + Assign{assigning ? ' ⏳' : ''}
-      </button>
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      {trigger}
       {open && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 20, background: 'var(--surface)',
           border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          minWidth: 160, marginTop: 4,
+          minWidth: 160, marginTop: 4, maxHeight: 240, overflowY: 'auto',
         }}>
           {categories.map(cat => (
             <button key={cat.id}
               onClick={() => { onAssign(txnId, cat.id); setOpen(false); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontSize: '0.85rem' }}>
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
+                background: cat.id === categoryId ? 'var(--accent-soft)' : 'none',
+                border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontSize: '0.85rem',
+              }}>
               <span>{cat.icon}</span>
               <span style={{ color: cat.color }}>{cat.name}</span>
+              {cat.id === categoryId && <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>✓</span>}
             </button>
           ))}
         </div>

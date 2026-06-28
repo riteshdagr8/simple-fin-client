@@ -11,7 +11,8 @@ A personal finance manager built with React and Express, powered by [SimpleFIN](
 - **Custom Categories** — Create and manage spending categories with custom icons and colors
 - **Rules Engine** — Pattern-based rules to auto-categorize transactions
 - **Multi-Account** — Support for multiple bank connections and accounts
-- **Email Notifications** — Account verification and password reset via SMTP
+- **Receipts** — Upload or drop image/PDF receipts into a folder; OCR extracts total, vendor, and date; auto-matches to transactions with optional LLM assistance
+- **Email Notifications** — Account verification and password reset via Resend
 - **Secure** — JWT auth, bcrypt passwords, encrypted secrets at rest, rate limiting, CSP headers
 
 ## Tech Stack
@@ -22,7 +23,9 @@ A personal finance manager built with React and Express, powered by [SimpleFIN](
 | Backend | Express 5, Node.js |
 | Database | SQLite (better-sqlite3) |
 | Auth | JWT, bcrypt |
+| Email | Resend |
 | AI | OpenAI-compatible API |
+| OCR | Tesseract.js |
 
 ## Getting Started
 
@@ -53,8 +56,8 @@ Required environment variables:
 |----------|-------------|
 | `JWT_SECRET` | Long random string for JWT signing |
 | `ENCRYPTION_KEY` | 64 hex chars for encrypting stored secrets |
-| `SMTP_USER` | Gmail address for sending emails |
-| `SMTP_PASS` | Gmail App Password |
+| `RESEND_API_KEY` | Resend API key for sending emails |
+| `RESEND_FROM` | Email address for sending emails (e.g., `FinApp <noreply@yourdomain.com>`) |
 
 ### Running
 
