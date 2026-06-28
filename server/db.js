@@ -262,6 +262,8 @@ function migrate(db) {
     { name: 'ocr_text', sql: "ALTER TABLE receipts ADD COLUMN ocr_text TEXT" },
     { name: 'ocr_status', sql: "ALTER TABLE receipts ADD COLUMN ocr_status TEXT DEFAULT 'pending'" },
     { name: 'match_score', sql: "ALTER TABLE receipts ADD COLUMN match_score REAL" },
+    { name: 'extraction_source', sql: "ALTER TABLE receipts ADD COLUMN extraction_source TEXT DEFAULT 'ocr'" },
+    { name: 'matched_at', sql: "ALTER TABLE receipts ADD COLUMN matched_at TEXT" },
   ];
   for (const m of receiptMigrations) {
     if (!receiptCols.some(c => c.name === m.name)) {
@@ -273,5 +275,8 @@ function migrate(db) {
   const llmCols = db.prepare("PRAGMA table_info(user_llm_config)").all();
   if (!llmCols.some(c => c.name === 'use_llm_for_receipts')) {
     db.exec("ALTER TABLE user_llm_config ADD COLUMN use_llm_for_receipts INTEGER DEFAULT 0");
+  }
+  if (!llmCols.some(c => c.name === 'supports_vision')) {
+    db.exec("ALTER TABLE user_llm_config ADD COLUMN supports_vision INTEGER DEFAULT NULL");
   }
 }

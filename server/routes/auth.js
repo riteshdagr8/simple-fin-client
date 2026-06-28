@@ -29,9 +29,9 @@ const registerLimiter = rateLimit({
 });
 
 const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 3,
-  message: { error: 'Too many password reset requests. Try again in 1 hour.' },
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 requests per 15 minutes
+  message: { error: 'Too many password reset requests. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 });

@@ -5,9 +5,10 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initScheduler, initEmailSummaryScheduler } from './scheduler.js';
+import { initScheduler, initEmailSummaryScheduler, initReceiptCleanupScheduler } from './scheduler.js';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { authMiddleware, optionalAuth } from './middleware/auth.js';
+import { getDb } from './db.js';
 import connectionsRouter from './routes/connections.js';
 import accountsRouter from './routes/accounts.js';
 import transactionsRouter from './routes/transactions.js';
@@ -193,6 +194,7 @@ const server = app.listen(PORT, () => {
   console.log(`FinApp server running on http://localhost:${PORT}`);
   initScheduler();
   initEmailSummaryScheduler();
+  initReceiptCleanupScheduler();
   import('./receipt-watch.js').then(({ initReceiptWatchers }) => {
     initReceiptWatchers();
   });

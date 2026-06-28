@@ -23,6 +23,7 @@ export default function Settings({ setTheme }) {
   const [checkResult, setCheckResult] = useState(null);
   const [showCheckWarning, setShowCheckWarning] = useState(false);
   const [useLlmForReceipts, setUseLlmForReceipts] = useState(false);
+  const [supportsVision, setSupportsVision] = useState(null); // null = auto-detect
 
   const [syncInterval, setSyncInterval] = useState(2);
   const [syncSaving, setSyncSaving] = useState(false);
@@ -50,6 +51,7 @@ export default function Settings({ setTheme }) {
           setBaseUrl(cfg.baseUrl || PROVIDERS.find(p => p.id === (cfg.provider || 'openai'))?.defaultUrl || '');
           setModel(cfg.model || 'gpt-4o-mini');
           setUseLlmForReceipts(!!cfg.useLlmForReceipts);
+          setSupportsVision(cfg.supportsVision);
         }
       })
       .catch(err => setError(err.message))
@@ -94,6 +96,7 @@ export default function Settings({ setTheme }) {
         baseUrl: baseUrl || PROVIDERS.find(p => p.id === provider)?.defaultUrl,
         model,
         useLlmForReceipts,
+        supportsVision,
       };
       // Only send apiKey if user typed a new one
       if (apiKey.trim()) payload.apiKey = apiKey.trim();
@@ -242,12 +245,44 @@ export default function Settings({ setTheme }) {
             <label className="checkbox-row">
               <input type="checkbox" checked={useLlmForReceipts}
                 onChange={e => setUseLlmForReceipts(e.target.checked)} />
-              <span>Use LLM for receipt matching</span>
+              <span>Use LLM for receipt extraction and matching</span>
             </label>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4, marginLeft: 24 }}>
-              When enabled, the LLM will help match receipts to transactions using OCR-extracted data.
-              This may improve accuracy but uses additional API calls.
+              When enabled, the LLM will extract total, vendor, and date from receipts, then help match to transactions.
+              Uses additional API calls per receipt.
             </p>
+            {useLlmForReceipts && (() => {
+              const visionModels = ['gpt-4o', 'gpt-4-turbo', 'claude-3', 'claude-sonnet', 'claude-opus', 'gemini', 'qwen'];
+              const autoVision = model ? visionModels.some(v => model.toLowerCase().includes(v)) : false;
+              const isVision = supportsVision === true || (supportsVision === null && autoVision);
+
+              return (
+                <div style={{ marginTop: 6, marginLeft: 24 }}>
+                  <label className="checkbox-row" style={{ fontSize: '0.8rem' }}>
+                    <input type="checkbox"
+                      checked={isVision}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSupportsVision(true);
+                        } else {
+                          setSupportsVision(false);
+                        }
+                      }} />
+                    <span>Model supports vision (image input)</span>
+                  </label>
+                  {!isVision && model && (
+                    <p style={{ fontSize: '0.75rem', color: '#ca8a04', marginTop: 4, background: '#fef9c3', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
+                      Receipt extraction will use OCR text instead of images. Check the box above if your model actually supports vision.
+                    </p>
+                  )}
+                  {isVision && !autoVision && (
+                    <p style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: 4, background: '#dbeafe', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
+                      Vision manually enabled for <strong>{model}</strong>. Images will be sent to the model for extraction.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

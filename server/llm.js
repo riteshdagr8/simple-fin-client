@@ -1,10 +1,46 @@
 import { getDb } from './db.js';
 import { decrypt } from './crypto.js';
+import https from 'https';
+import http from 'http';
 
 const DEFAULT_PROVIDERS = {
   openai:    { baseUrl: 'https://api.openai.com/v1',  model: 'gpt-4o-mini' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-20241022' },
 };
+
+// Use native https/http instead of fetch (undici) to avoid DNS resolution issues
+function nativeFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const timeout = options.timeout || 120000;
+
+    const req = mod.request({
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: options.method || 'POST',
+      headers: options.headers || {},
+      timeout,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          text: () => Promise.resolve(data),
+          json: () => Promise.resolve(JSON.parse(data)),
+        });
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
 
 export async function getUserConfig(userId) {
   const db = getDb();
@@ -15,6 +51,7 @@ export async function getUserConfig(userId) {
     baseUrl: config.base_url,
     apiKey: config.api_key ? decrypt(config.api_key) : null,
     model: config.model,
+    supportsVision: config.supports_vision === 1 ? true : config.supports_vision === 0 ? false : null,
   };
 }
 
@@ -36,7 +73,7 @@ async function chatOpenAICompatible(baseUrl, apiKey, model, messages, options = 
   const maxTokens = options.maxTokens || 8192;
   const temperature = options.temperature ?? 0.1;
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await nativeFetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -49,6 +86,7 @@ async function chatOpenAICompatible(baseUrl, apiKey, model, messages, options = 
       temperature,
       ...options.body,
     }),
+    timeout: 120000,
   });
 
   if (!response.ok) {
@@ -64,12 +102,41 @@ async function chatOpenAICompatible(baseUrl, apiKey, model, messages, options = 
   return content;
 }
 
+const VISION_MODEL_KEYWORDS = ['gpt-4o', 'gpt-4-turbo', 'claude-3', 'claude-sonnet', 'claude-opus', 'gemini', 'qwen'];
+
+export function isVisionModel(modelName = '', userOverride = null) {
+  if (userOverride === true) return true;
+  if (userOverride === false) return false;
+  const lower = modelName.toLowerCase();
+  return VISION_MODEL_KEYWORDS.some(k => lower.includes(k));
+}
+
+function convertContentForAnthropic(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return content;
+
+  return content.map(block => {
+    if (block.type === 'image_url') {
+      const url = block.image_url?.url || '';
+      const match = url.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (match) {
+        return {
+          type: 'image',
+          source: { type: 'base64', media_type: match[1], data: match[2] },
+        };
+      }
+      return block; // pass through non-base64 URLs as-is
+    }
+    return block;
+  });
+}
+
 async function chatAnthropic(baseUrl, apiKey, model, messages) {
   // Anthropic uses a different format: system message separate, no "system" role in messages array
   const systemMsg = messages.find(m => m.role === 'system');
   const userMsgs = messages.filter(m => m.role !== 'system');
 
-  const response = await fetch(`${baseUrl}/messages`, {
+  const response = await nativeFetch(`${baseUrl}/messages`, {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -80,9 +147,10 @@ async function chatAnthropic(baseUrl, apiKey, model, messages) {
     body: JSON.stringify({
       model,
       system: systemMsg?.content ?? '',
-      messages: userMsgs.map(m => ({ role: m.role, content: m.content })),
-      max_tokens: 2048,
+      messages: userMsgs.map(m => ({ role: m.role, content: convertContentForAnthropic(m.content) })),
+      max_tokens: 4096,
     }),
+    timeout: 120000,
   });
 
   if (!response.ok) {

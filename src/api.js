@@ -49,6 +49,10 @@ export const api = {
     request('/connections', { method: 'POST', body: JSON.stringify({ name, setupToken }) }),
   deleteConnection: (id) => request(`/connections/${id}`, { method: 'DELETE' }),
   syncConnection: (id) => request(`/connections/${id}/sync`, { method: 'POST' }),
+  deepSyncConnection: (id) => request(`/connections/${id}/deep-sync`, { method: 'POST' }),
+  resetConnection: (id) => request(`/connections/${id}/reset`, { method: 'POST' }),
+  reauthenticateConnection: (id, setupToken) =>
+    request(`/connections/${id}/reauthenticate`, { method: 'PUT', body: JSON.stringify({ setupToken }) }),
 
   // Accounts
   getAccounts: (connectionId, includeHidden = false) =>
@@ -140,6 +144,9 @@ export const api = {
     request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: transactionId }) }),
   unmatchReceipt: (id) =>
     request(`/receipts/${id}/match`, { method: 'POST', body: JSON.stringify({ transaction_id: null }) }),
+  rematchReceipt: (id, opts = {}) => request(`/receipts/${id}/rematch${opts.reextract ? '?reextract=1' : ''}`, { method: 'POST' }),
+  getReceiptCandidates: (id) => request(`/receipts/${id}/candidates`),
   deleteReceipt: (id) => request(`/receipts/${id}`, { method: 'DELETE' }),
-  getReceiptFile: (id) => `${BASE}/receipts/${id}/file`,
+  deleteReceiptFile: (id) => request(`/receipts/${id}/file`, { method: 'DELETE' }),
+  getReceiptFile: (id) => `${BASE}/receipts/${id}/file?token=${encodeURIComponent(authToken || '')}`,
 };

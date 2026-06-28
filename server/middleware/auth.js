@@ -28,10 +28,11 @@ function isTokenStale(userId, tokenIat) {
 
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  const queryToken = req.query.token;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : queryToken;
+  if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const token = header.slice(7);
   try {
     const payload = verifyToken(token);
     if (isTokenStale(payload.userId, payload.iat)) {

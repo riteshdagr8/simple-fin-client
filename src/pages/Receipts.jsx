@@ -7,6 +7,12 @@ export default function Receipts() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [candidates, setCandidates] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [rematching, setRematching] = useState(false);
+  const [reextractingId, setReextractingId] = useState(null);
+  const [matchMode, setMatchMode] = useState('system'); // 'system' or 'manual'
+  const [llmForReceipts, setLlmForReceipts] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [deleteDialog, setDeleteDialog] = useState({ open: false, receiptId: null });
@@ -14,6 +20,9 @@ export default function Receipts() {
 
   useEffect(() => {
     loadReceipts();
+    api.getLLMConfig()
+      .then(cfg => setLlmForReceipts(!!cfg?.useLlmForReceipts))
+      .catch(() => {});
   }, []);
 
   const loadReceipts = () => {
@@ -53,6 +62,9 @@ export default function Receipts() {
 
   const handleSelectReceipt = async (id) => {
     setSelected(id);
+    setMatchMode('system');
+    setSearchQuery('');
+    setAllTransactions([]);
     try {
       const data = await api.getReceipt(id);
       setCandidates(data.candidates || []);
@@ -61,13 +73,42 @@ export default function Receipts() {
     }
   };
 
+  const handleRematch = async (receiptId) => {
+    setRematching(true);
+    try {
+      await api.rematchReceipt(receiptId);
+      await loadReceipts();
+      setSelected(receiptId);
+      // Don't show candidates automatically — let user see match result first
+      setCandidates([]);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRematching(false);
+    }
+  };
+
+  const handleReextract = async (receiptId) => {
+    setReextractingId(receiptId);
+    try {
+      await api.rematchReceipt(receiptId, { reextract: true });
+      const freshReceipt = await api.getReceipt(receiptId);
+      setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, ...freshReceipt } : r));
+      setSelected(receiptId);
+      setCandidates(freshReceipt.candidates || []);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setReextractingId(null);
+    }
+  };
+
   const handleMatch = async (receiptId, txnId) => {
     try {
-      await api.matchReceipt(receiptId, txnId);
+      const result = await api.matchReceipt(receiptId, txnId);
       await loadReceipts();
-      const fresh = await api.getReceipt(receiptId);
       setSelected(receiptId);
-      setCandidates(fresh.candidates || []);
+      setCandidates(result.candidates || []);
     } catch (err) {
       alert(err.message);
     }
@@ -77,9 +118,43 @@ export default function Receipts() {
     try {
       await api.unmatchReceipt(receiptId);
       await loadReceipts();
-      const fresh = await api.getReceipt(receiptId);
       setSelected(receiptId);
-      setCandidates(fresh.candidates || []);
+      setCandidates([]);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteFile = async (receiptId) => {
+    try {
+      await api.deleteReceiptFile(receiptId);
+      await loadReceipts();
+      setSelected(receiptId);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleSearchTransactions = async (query) => {
+    setSearchQuery(query);
+    if (query.length < 2) { setAllTransactions([]); return; }
+    try {
+      const result = await api.getTransactions({ search: query, limit: 30 });
+      setAllTransactions(result.transactions || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleManualMatch = async (receiptId, txnId) => {
+    try {
+      const result = await api.matchReceipt(receiptId, txnId);
+      await loadReceipts();
+      setSelected(receiptId);
+      setCandidates(result.candidates || []);
+      setSearchQuery('');
+      setAllTransactions([]);
+      setMatchMode('system');
     } catch (err) {
       alert(err.message);
     }
@@ -204,7 +279,7 @@ export default function Receipts() {
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, position: 'sticky', top: 16, alignSelf: 'start' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem' }}>Receipt Detail</h3>
-                <button onClick={() => { setSelected(null); setCandidates([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                <button onClick={() => { setSelected(null); setCandidates([]); setMatchMode('system'); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
               </div>
 
               {isPdf(selectedReceipt) ? (
@@ -221,7 +296,19 @@ export default function Receipts() {
               {/* Extracted data */}
               {(selectedReceipt.extracted_total != null || selectedReceipt.extracted_vendor || selectedReceipt.extracted_date) && (
                 <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 'var(--radius)', fontSize: '0.85rem' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6, fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Extracted Data</div>
+                  <div style={{ fontWeight: 600, marginBottom: 6, fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Extracted Data
+                    {selectedReceipt.extraction_source && (
+                      <span style={{
+                        fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4,
+                        background: selectedReceipt.extraction_source === 'llm' ? '#dbeafe' : '#f3f4f6',
+                        color: selectedReceipt.extraction_source === 'llm' ? '#2563eb' : '#6b7280',
+                        fontWeight: 500, textTransform: 'none',
+                      }}>
+                        {selectedReceipt.extraction_source === 'llm' ? '🤖 LLM' : '📝 OCR'}
+                      </span>
+                    )}
+                  </div>
                   {selectedReceipt.extracted_total != null && (
                     <div>Total: <strong>${selectedReceipt.extracted_total.toFixed(2)}</strong></div>
                   )}
@@ -240,27 +327,159 @@ export default function Receipts() {
                   {selectedReceipt.ocr_status === 'failed' && (
                     <div style={{ color: 'var(--danger)' }}>OCR failed</div>
                   )}
+                  {selectedReceipt.matched_at && (
+                    <div>Matched: <strong>{new Date(selectedReceipt.matched_at + 'Z').toLocaleDateString()}</strong></div>
+                  )}
+                  {selectedReceipt.extraction_source && (
+                    <div>Source: <strong>{selectedReceipt.extraction_source === 'llm' ? '🤖 LLM' : '📝 OCR'}</strong></div>
+                  )}
                 </div>
               )}
 
-              <div>
-                <button onClick={() => handleDelete(selected)} style={{ background: 'var(--danger)', color: 'white', border: 'none', borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                  Delete Receipt
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleRematch(selected)}
+                  disabled={rematching}
+                  style={{
+                    background: rematching ? 'var(--border)' : 'var(--accent)',
+                    color: 'white', border: 'none', borderRadius: 'var(--radius)',
+                    padding: '6px 12px', cursor: rematching ? 'wait' : 'pointer',
+                    fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  {rematching ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Finding...</> : '🔍 Find Matches'}
                 </button>
-                {selectedReceipt.matched_transaction_id && (
-                  <button onClick={() => handleUnmatch(selected)} style={{ marginLeft: 8, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    Unmatch
+
+                {llmForReceipts && (
+                  <button
+                    onClick={() => handleReextract(selected)}
+                    disabled={reextractingId != null}
+                    style={{
+                      background: reextractingId === selected ? 'var(--border)' : 'none',
+                      border: '1px solid var(--accent)', color: 'var(--accent)',
+                      borderRadius: 'var(--radius)', padding: '6px 12px',
+                      cursor: reextractingId != null ? 'wait' : 'pointer', fontSize: '0.8rem',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    {reextractingId === selected ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Extracting...</> : '🤖 Re-extract with LLM'}
                   </button>
                 )}
+
+                <button
+                  onClick={() => {
+                    if (matchMode === 'manual') {
+                      setMatchMode('system');
+                      setCandidates([]);
+                      setSearchQuery('');
+                      setAllTransactions([]);
+                    } else {
+                      setMatchMode('manual');
+                    }
+                  }}
+                  style={{
+                    background: matchMode === 'manual' ? 'var(--accent-soft)' : 'none',
+                    border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                    padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                    color: matchMode === 'manual' ? 'var(--accent)' : 'var(--text)',
+                  }}
+                >
+                  {matchMode === 'manual' ? '✕ Cancel Search' : '✏️ Manual Match'}
+                </button>
+
+                {matchMode === 'system' && candidates.length === 0 && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const data = await api.getReceiptCandidates(selected);
+                        setCandidates(data.candidates || []);
+                      } catch (err) {
+                        alert(err.message);
+                      }
+                    }}
+                    style={{
+                      background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                      padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                    }}
+                  >
+                    📋 Show Candidates
+                  </button>
+                )}
+
+                {selectedReceipt.matched_transaction_id && (
+                  <button onClick={() => handleUnmatch(selected)} style={{
+                    background: 'none', border: '1px solid var(--danger)', color: 'var(--danger)',
+                    borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                  }}>
+                    ✕ Unmatch
+                  </button>
+                )}
+
+                <button onClick={() => handleDeleteFile(selected)} style={{
+                  background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                  borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                }}>
+                  📁 Delete File
+                </button>
+
+                <button onClick={() => handleDelete(selected)} style={{
+                  background: 'none', border: '1px solid var(--danger)', color: 'var(--danger)',
+                  borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                }}>
+                  🗑 Delete
+                </button>
               </div>
 
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Match to Transaction</h4>
-                {candidates.length === 0 ? (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                    No matching transactions found.
-                  </p>
-                ) : (
+              {/* Manual search mode */}
+              {matchMode === 'manual' && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Search Transactions</h4>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => handleSearchTransactions(e.target.value)}
+                    placeholder="Search by description, amount, date..."
+                    style={{
+                      width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius)', fontSize: '0.85rem', marginBottom: 8,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {allTransactions.length > 0 && (
+                    <div style={{ maxHeight: 250, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                      {allTransactions.map(t => (
+                        <div key={t.id}
+                          onClick={() => handleManualMatch(selected, t.id)}
+                          style={{
+                            padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            fontSize: '0.85rem',
+                            background: t.id === selectedReceipt.matched_transaction_id ? 'var(--accent-soft)' : 'transparent',
+                          }}>
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{t.description}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {t.account_name} · {new Date(t.posted + 'Z').toLocaleDateString()}
+                            </div>
+                          </div>
+                          <span style={{ color: t.amount < 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 500 }}>
+                            {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {searchQuery.length >= 2 && allTransactions.length === 0 && (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No transactions found.</p>
+                  )}
+                </div>
+              )}
+
+              {/* System match candidates */}
+              {matchMode === 'system' && candidates.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Suggested Matches</h4>
                   <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                     {candidates.map(c => (
                       <div key={c.id}
@@ -277,14 +496,36 @@ export default function Receipts() {
                             {c.account_name} · {new Date(c.posted + 'Z').toLocaleDateString()}
                           </div>
                         </div>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          ${c.amount.toFixed(2)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            ${Math.abs(c.amount).toFixed(2)}
+                          </span>
+                          {c.score != null && (
+                            <span style={{
+                              fontSize: '0.7rem', padding: '2px 6px', borderRadius: 4,
+                              background: c.score >= 0.7 ? '#dcfce7' : c.score >= 0.4 ? '#fef9c3' : '#fee2e2',
+                              color: c.score >= 0.7 ? '#16a34a' : c.score >= 0.4 ? '#ca8a04' : '#dc2626',
+                              fontWeight: 600,
+                            }}>
+                              {Math.round(c.score * 100)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
+              {matchMode === 'system' && candidates.length === 0 && !rematching && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    {selectedReceipt.matched_transaction_id
+                      ? <>Receipt is matched. Use <strong>Unmatch</strong> to clear, or <strong>Show Candidates</strong> to see alternatives.</>
+                      : <>No matching transactions found. Use <strong>Show Candidates</strong> to see alternatives, or <strong>Manual Match</strong> to search by description.</>}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

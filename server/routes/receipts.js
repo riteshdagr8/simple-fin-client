@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb } from '../db.js';
-import { processReceiptFile } from '../receipt-processor.js';
+import { processReceiptFile, findMatchingTransactions, matchReceiptWithLLM } from '../receipt-processor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIPTS_DIR = path.join(__dirname, '..', '..', 'data', 'receipts');
@@ -146,6 +146,83 @@ router.post('/upload', upload.single('receipt'), async (req, res) => {
   }
 });
 
+// Get candidate transactions for manual matching
+router.get('/:id/candidates', (req, res) => {
+  const db = getDb();
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
+
+  const candidates = findMatchingTransactions(req.user.userId, receipt);
+  res.json({ candidates });
+});
+
+// Re-run system matching for a receipt (optionally re-extract data first)
+router.post('/:id/rematch', async (req, res) => {
+  const db = getDb();
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
+
+  // If reextract is explicitly requested, re-run the full extraction process
+  // Also auto-re-extract if receipt has no extracted data and LLM is enabled
+  const hasNoData = receipt.extracted_total == null && receipt.extracted_date == null && receipt.extracted_vendor == null;
+  const llmConfig = db.prepare('SELECT use_llm_for_receipts FROM user_llm_config WHERE user_id = ?').get(req.user.userId);
+  const shouldReextract = req.query.reextract === '1' || (hasNoData && llmConfig?.use_llm_for_receipts);
+
+  if (shouldReextract) {
+    const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Receipt file not found' });
+    await processReceiptFile(req.user.userId, receipt.id, filePath);
+    // Reload receipt with updated data
+    const refreshed = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.userId);
+    Object.assign(receipt, refreshed);
+  }
+
+  const candidates = findMatchingTransactions(req.user.userId, receipt);
+
+  let matchedTransactionId = null;
+  let matchScore = null;
+
+  if (candidates.length > 0) {
+    const bestMatch = candidates[0];
+    let finalMatchId = bestMatch.id;
+    let finalScore = bestMatch.score;
+
+    const llmConfig = db.prepare('SELECT use_llm_for_receipts FROM user_llm_config WHERE user_id = ?').get(req.user.userId);
+    if (llmConfig?.use_llm_for_receipts && bestMatch.score < 0.7) {
+      const llmMatchId = await matchReceiptWithLLM(req.user.userId, receipt.ocr_text, candidates);
+      if (llmMatchId) {
+        finalMatchId = llmMatchId;
+        finalScore = 0.8;
+      }
+    }
+
+    if (finalScore >= 0.5) {
+      matchedTransactionId = finalMatchId;
+      matchScore = finalScore;
+    } else {
+      matchScore = bestMatch.score;
+    }
+  }
+
+  db.prepare(`
+    UPDATE receipts
+    SET matched_transaction_id = ?, match_score = ?, matched_at = CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE matched_at END
+    WHERE id = ?
+  `).run(matchedTransactionId, matchScore, matchedTransactionId, receipt.id);
+
+  const updated = db.prepare(`
+    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
+    FROM receipts r
+    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    WHERE r.id = ? AND r.user_id = ?
+  `).get(req.params.id, req.user.userId);
+
+  res.json({ ...updated, candidates });
+});
+
 // Match a receipt to a transaction
 router.post('/:id/match', (req, res) => {
   const { transaction_id } = req.body;
@@ -157,7 +234,7 @@ router.post('/:id/match', (req, res) => {
 
   if (transaction_id == null) {
     // Unmatch
-    db.prepare('UPDATE receipts SET matched_transaction_id = NULL WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE receipts SET matched_transaction_id = NULL, match_score = NULL, matched_at = NULL WHERE id = ?').run(req.params.id);
     return res.json({ success: true, matched: false });
   }
 
@@ -170,10 +247,33 @@ router.post('/:id/match', (req, res) => {
   `).get(transaction_id, req.user.userId);
   if (!txn) return res.status(404).json({ error: 'Transaction not found' });
 
-  db.prepare('UPDATE receipts SET matched_transaction_id = ? WHERE id = ?')
+  db.prepare('UPDATE receipts SET matched_transaction_id = ?, match_score = 1.0, matched_at = datetime(\'now\') WHERE id = ?')
     .run(transaction_id, req.params.id);
 
-  res.json({ success: true, matched: true, transaction_id });
+  const updated = db.prepare(`
+    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
+    FROM receipts r
+    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    WHERE r.id = ? AND r.user_id = ?
+  `).get(req.params.id, req.user.userId);
+
+  res.json({ success: true, matched: true, receipt: updated });
+});
+
+// Delete file only (keep receipt record)
+router.delete('/:id/file', (req, res) => {
+  const db = getDb();
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
+
+  const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    res.json({ success: true, deleted: true });
+  } else {
+    res.json({ success: true, deleted: false, message: 'File already removed' });
+  }
 });
 
 // Delete a receipt

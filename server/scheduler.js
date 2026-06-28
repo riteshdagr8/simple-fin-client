@@ -189,3 +189,60 @@ export function initEmailSummaryScheduler() {
   });
   console.log('Email summary scheduler initialized: checks every 5 min.');
 }
+
+// --- Receipt file cleanup scheduler ---
+// Deletes receipt files for matched receipts older than 3 months from matching time
+
+let receiptCleanupTask = null;
+
+export function initReceiptCleanupScheduler() {
+  if (receiptCleanupTask) {
+    receiptCleanupTask.stop();
+  }
+  // Run once daily at 3 AM
+  receiptCleanupTask = cron.schedule('0 3 * * *', () => {
+    runReceiptFileCleanup().catch(err => {
+      console.error('[RECEIPT-CLEANUP] Tick failed:', err.message);
+    });
+  });
+  console.log('Receipt cleanup scheduler initialized: runs daily at 3 AM, deletes files for matched receipts older than 3 months.');
+}
+
+export async function runReceiptFileCleanup() {
+  const db = getDb();
+  const path = await import('path');
+  const fs = await import('fs');
+  const { fileURLToPath } = await import('url');
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const RECEIPTS_DIR = path.join(__dirname, '..', 'data', 'receipts');
+
+  // Find matched receipts older than 3 months from matching time that still have files
+  const oldMatched = db.prepare(`
+    SELECT id, user_id, filename, matched_at
+    FROM receipts
+    WHERE matched_at IS NOT NULL
+      AND matched_at < datetime('now', '-3 months')
+  `).all();
+
+  if (oldMatched.length === 0) {
+    return;
+  }
+
+  let deleted = 0;
+  for (const receipt of oldMatched) {
+    const filePath = path.join(RECEIPTS_DIR, receipt.user_id.toString(), receipt.filename);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        deleted++;
+      } catch (err) {
+        console.error(`[RECEIPT-CLEANUP] Failed to delete ${filePath}:`, err.message);
+      }
+    }
+  }
+
+  if (deleted > 0) {
+    console.log(`[RECEIPT-CLEANUP] Deleted ${deleted} receipt files older than 3 months.`);
+  }
+}

@@ -28,7 +28,19 @@ async function sendMail(to, subject, html) {
     console.log(`[EMAIL] To: ${to}\nSubject: ${subject}\n${html.replace(/<[^>]+>/g, '')}`);
     return Promise.resolve();
   }
-  return r.emails.send({ from: RESEND_FROM, to, subject, html });
+  try {
+    console.log(`[EMAIL] Sending email to ${to}: ${subject}`);
+    const result = await r.emails.send({ from: RESEND_FROM, to, subject, html });
+    if (result.error) {
+      console.error(`[EMAIL] Resend error:`, result.error);
+      throw new Error(result.error.message || 'Resend send failed');
+    }
+    console.log(`[EMAIL] Email sent successfully to ${to}, ID: ${result.data?.id}`);
+    return result;
+  } catch (err) {
+    console.error(`[EMAIL] Failed to send email to ${to}:`, err.message);
+    throw err;
+  }
 }
 
 // Escape user-controlled values before inserting into HTML

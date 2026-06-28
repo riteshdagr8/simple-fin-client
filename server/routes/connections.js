@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 import { exchangeToken, fetchAccounts, SimpleFinAuthError } from '../simplefin.js';
-import { canSyncConnection, getStartDateForSync, MAX_SYNCS_PER_DAY } from '../sync-tracker.js';
+import { canSyncConnection, getStartDateForSync, MAX_SYNCS_PER_DAY, MAX_LOOKBACK_DAYS } from '../sync-tracker.js';
 import { encrypt, decrypt } from '../crypto.js';
 
 const router = Router();
@@ -18,11 +18,11 @@ router.get('/', (req, res) => {
     ORDER BY c.created_at DESC
   `).all(req.user.userId);
 
-  // Add daily sync count for each connection
+  // Add daily sync count for each connection (excluding failed syncs)
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const countStmt = db.prepare(`
     SELECT COUNT(*) as cnt FROM sync_log
-    WHERE connection_id = ? AND started_at >= ?
+    WHERE connection_id = ? AND started_at >= ? AND status != 'failed'
   `);
   const enriched = connections.map(c => ({
     ...c,
@@ -67,6 +67,64 @@ router.delete('/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// Deep sync - fetch up to 30 days of transactions
+router.post('/:id/deep-sync', async (req, res) => {
+  const db = getDb();
+  const conn = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+  // Check rate limit
+  const check = canSyncConnection(conn.id);
+  if (!check.allowed) {
+    return res.status(429).json({
+      error: `Daily sync limit reached (${check.count}/${check.limit} in last 24h). SimpleFIN allows max ${MAX_SYNCS_PER_DAY} syncs/day.`,
+      count: check.count,
+      limit: check.limit,
+    });
+  }
+
+  res.json({ message: 'Deep sync started' });
+  try {
+    await syncConnection(conn.id, req.user.userId, 'manual', MAX_LOOKBACK_DAYS);
+  } catch (err) {
+    console.error(`Deep sync failed for connection ${conn.id}:`, err.message);
+  }
+});
+
+// Reauthenticate a connection with a new setup token
+router.put('/:id/reauthenticate', async (req, res) => {
+  const { setupToken } = req.body;
+  if (!setupToken) {
+    return res.status(400).json({ error: 'setupToken is required' });
+  }
+
+  const db = getDb();
+  const conn = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+  try {
+    const { accessUrl } = await exchangeToken(setupToken);
+    const encryptedAccessUrl = encrypt(accessUrl);
+
+    db.prepare('UPDATE connections SET access_url = ?, last_error = NULL WHERE id = ?')
+      .run(encryptedAccessUrl, conn.id);
+
+    console.log(`[SYNC] Connection ${conn.id} reauthenticated successfully`);
+
+    // Trigger a deep sync to fetch any missing transactions (go back 30 days)
+    syncConnection(conn.id, req.user.userId, 'manual', 30).catch(err => {
+      console.error(`[SYNC] Post-reauth sync failed for connection ${conn.id}:`, err.message);
+    });
+
+    res.json({ success: true, message: 'Connection reauthenticated. Performing deep sync...' });
+  } catch (err) {
+    console.error('[SYNC] Reauthentication failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Manual sync for a connection
 router.post('/:id/sync', async (req, res) => {
   const db = getDb();
@@ -92,7 +150,56 @@ router.post('/:id/sync', async (req, res) => {
   }
 });
 
-export async function syncConnection(connectionId, userId, source = 'manual') {
+// Reset connection — clear all transactions and re-sync with full lookback
+router.post('/:id/reset', async (req, res) => {
+  const db = getDb();
+  const conn = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.userId);
+  if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+  // Get all account IDs for this connection
+  const accounts = db.prepare('SELECT id FROM accounts WHERE connection_id = ?').all(conn.id);
+  const accountIds = accounts.map(a => a.id);
+
+  if (accountIds.length > 0) {
+    const placeholders = accountIds.map(() => '?').join(',');
+
+    // Delete transaction categories first (foreign key dependency)
+    db.prepare(`
+      DELETE FROM transaction_categories WHERE transaction_id IN (
+        SELECT id FROM transactions WHERE account_id IN (${placeholders})
+      )
+    `).run(...accountIds);
+
+    // Delete transactions
+    const txnResult = db.prepare(`DELETE FROM transactions WHERE account_id IN (${placeholders})`).run(...accountIds);
+
+    // Delete receipt matches (set to NULL, don't delete receipts)
+    db.prepare(`
+      UPDATE receipts SET matched_transaction_id = NULL WHERE matched_transaction_id IN (
+        SELECT id FROM transactions WHERE account_id IN (${placeholders})
+      )
+    `).run(...accountIds);
+
+    // Delete accounts
+    db.prepare(`DELETE FROM accounts WHERE connection_id = ?`).run(conn.id);
+
+    console.log(`[RESET] Cleared ${txnResult.changes} transactions and ${accounts.length} accounts for connection ${conn.id}`);
+  }
+
+  // Clear last_sync_at so next sync does full lookback
+  db.prepare('UPDATE connections SET last_sync_at = NULL, last_error = NULL WHERE id = ?').run(conn.id);
+
+  // Trigger deep sync with full 90-day lookback
+  res.json({ message: 'Connection reset. Starting full 90-day sync...' });
+  try {
+    await syncConnection(conn.id, req.user.userId, 'manual', MAX_LOOKBACK_DAYS);
+  } catch (err) {
+    console.error(`Reset sync failed for connection ${conn.id}:`, err.message);
+  }
+});
+
+export async function syncConnection(connectionId, userId, source = 'manual', lookbackDays = null) {
   const db = getDb();
   const conn = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
     .get(connectionId, userId);
@@ -108,7 +215,16 @@ export async function syncConnection(connectionId, userId, source = 'manual') {
   const logId = logEntry.lastInsertRowid;
 
   try {
-    const startDate = getStartDateForSync(conn);
+    // Use custom lookback if provided (for deep sync after reauth), otherwise use normal calculation
+    let startDate;
+    if (lookbackDays) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - lookbackDays);
+      startDate = Math.floor(cutoff.getTime() / 1000);
+      console.log(`[SYNC] Deep sync: fetching transactions from last ${lookbackDays} days`);
+    } else {
+      startDate = getStartDateForSync(conn);
+    }
 
     const data = await fetchAccounts(accessUrl, startDate);
 
@@ -216,30 +332,46 @@ export async function syncConnection(connectionId, userId, source = 'manual') {
       : err.message;
     db.prepare('UPDATE connections SET last_error = ? WHERE id = ?').run(errorMsg, connectionId);
 
-    if (isReauth) {
-      // Send email alert to the user about reauthentication
-      try {
-        const user = db.prepare('SELECT email, name FROM users WHERE id = ?').get(userId);
-        if (user?.email) {
-          const { sendMail } = await import('../email.js');
-          const conn = db.prepare('SELECT name FROM connections WHERE id = ?').get(connectionId);
-          const connName = conn?.name || 'your bank connection';
-          const settingsUrl = `${process.env.APP_URL || 'http://localhost:4200'}/#/connections`;
-          const html = `
-            <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
-              <h2 style="color: #dc2626;">⚠️ Bank Connection Needs Reauthentication</h2>
-              <p>Hi ${user.name || 'there'},</p>
-              <p>Our automated sync for <strong>${connName}</strong> failed with an authentication error. This means SimpleFIN Bridge can no longer access your bank data.</p>
-              <p><strong>What to do:</strong> Go to your Connections page and re-add the connection with a fresh setup token from SimpleFIN Bridge.</p>
-              <p><a href="${settingsUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">Go to Connections</a></p>
-              <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;">
-              <p style="color:#9ca3af;font-size:12px;">Sent by FinApp. <a href="${settingsUrl}">Manage email preferences</a></p>
-            </div>`;
-          await sendMail(user.email, `Action needed: ${connName} needs reauthentication`, html);
+    // Send email alert for all sync errors
+    try {
+      const user = db.prepare('SELECT email, name FROM users WHERE id = ?').get(userId);
+      if (user?.email) {
+        const { sendMail } = await import('../email.js');
+        const conn = db.prepare('SELECT name FROM connections WHERE id = ?').get(connectionId);
+        const connName = conn?.name || 'your bank connection';
+        const settingsUrl = `${process.env.APP_URL || 'http://localhost:4200'}/#/connections`;
+
+        let title, message, actionText;
+        if (isReauth) {
+          title = '⚠️ Bank Connection Needs Reauthentication';
+          message = `Our automated sync for <strong>${connName}</strong> failed with an authentication error. This means SimpleFIN Bridge can no longer access your bank data.`;
+          actionText = 'Go to Connections';
+        } else {
+          title = '⚠️ Bank Sync Failed';
+          message = `Our automated sync for <strong>${connName}</strong> failed with the following error:`;
+          actionText = 'View Connections';
         }
-      } catch (emailErr) {
-        console.error('[SYNC] Failed to send reauth alert email:', emailErr.message);
+
+        const html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+            <h2 style="color: #dc2626;">${title}</h2>
+            <p>Hi ${user.name || 'there'},</p>
+            <p>${message}</p>
+            ${!isReauth ? `<p style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 12px; margin: 16px 0; font-family: monospace; font-size: 14px;">${errorMsg}</p>` : ''}
+            <p><strong>What to do:</strong> ${isReauth ? 'Go to your Connections page and re-add the connection with a fresh setup token from SimpleFIN Bridge.' : 'Check your Connections page for details, or try syncing manually.'}</p>
+            <p><a href="${settingsUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">${actionText}</a></p>
+            <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;">
+            <p style="color:#9ca3af;font-size:12px;">Sent by FinApp. <a href="${settingsUrl}">Manage email preferences</a></p>
+          </div>`;
+
+        const subject = isReauth
+          ? `Action needed: ${connName} needs reauthentication`
+          : `Sync failed: ${connName}`;
+
+        await sendMail(user.email, subject, html);
       }
+    } catch (emailErr) {
+      console.error('[SYNC] Failed to send error alert email:', emailErr.message);
     }
 
     throw err;
