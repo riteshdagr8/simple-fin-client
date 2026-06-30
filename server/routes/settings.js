@@ -16,14 +16,26 @@ router.get('/llm', (req, res) => {
       model: 'gpt-4o-mini',
     });
   }
-  // Decrypt at the edge so callers never see the raw ciphertext
-  const decryptedKey = config.api_key ? decrypt(config.api_key) : '';
+  // Decrypt the API key only long enough to derive a masked hint.
+  // The plaintext variable is scoped tightly to prevent it from being
+  // captured in an error stack or log if something below throws.
+  let apiKeyHint = '';
+  let hasKey = false;
+  if (config.api_key) {
+    try {
+      const decrypted = decrypt(config.api_key);
+      hasKey = !!decrypted;
+      apiKeyHint = decrypted ? maskValue(decrypted) : '';
+    } catch {
+      // If decryption fails (e.g. key changed), just report "no key"
+    }
+  }
   res.json({
-    hasKey: !!decryptedKey,
+    hasKey,
     provider: config.provider,
     baseUrl: config.base_url,
     model: config.model,
-    apiKeyHint: decryptedKey ? maskValue(decryptedKey) : '',
+    apiKeyHint,
     useLlmForReceipts: !!config.use_llm_for_receipts,
     supportsVision: config.supports_vision === 1 ? true : config.supports_vision === 0 ? false : null,
   });
@@ -83,6 +95,9 @@ router.post('/llm/check', async (req, res) => {
   }
 
   const { provider, base_url, model } = existing;
+  // Decrypt the key right before the network call and pass it down. The
+  // plaintext variable stays in scope only as long as the test runs; if a
+  // network handler throws, the stack trace doesn't carry the key with it.
   const api_key = existing.api_key ? decrypt(existing.api_key) : '';
 
   const buildBody = (messages, maxTokens) => provider === 'anthropic'

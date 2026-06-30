@@ -40,6 +40,21 @@ export default function Transactions() {
   const [aiScopeEnd, setAiScopeEnd] = useState('');
   const [aiScopeAccounts, setAiScopeAccounts] = useState([]);
 
+  // Debounce the search input so we don't fire an API request on every keystroke.
+  // The actual `search` state used by the effect below only updates 300ms after
+  // the user stops typing, so the list re-queries once per pause rather than
+  // once per character.
+  const [searchInput, setSearchInput] = useState('');
+  const searchTimerRef = useRef(null);
+  const handleSearchChange = (value) => {
+    setSearchInput(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setSearch(value);
+      setOffset(0);
+    }, 300);
+  };
+
   const refreshJob = useCallback(() => {
     api.getLatestCategorizeJob().then(setCategorizeJob).catch(() => {});
   }, []);
@@ -283,7 +298,7 @@ export default function Transactions() {
         <div className="filters">
           <div className="form-group">
             <label>Search</label>
-            <input value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} placeholder="Description or category..." />
+            <input value={searchInput} onChange={e => handleSearchChange(e.target.value)} placeholder="Description or category..." />
           </div>
           {uniqueBanks.length > 1 && (
             <div className="form-group">

@@ -50,6 +50,9 @@ router.get('/', (req, res) => {
     where.push('t.posted <= ?');
     params.push(end_date);
   }
+  if (uncategorized === 'true' || uncategorized === '1') {
+    where.push('tc.id IS NULL');
+  }
 
   const whereClause = 'WHERE ' + where.join(' AND ');
 
@@ -178,13 +181,22 @@ router.post('/bulk-categorize', (req, res) => {
 router.post('/categorize-llm', async (req, res) => {
   const db = getDb();
   const {
-    limit = 200,
+    limit,
     scope = 'unassigned',  // unassigned | all | date | accounts | selected
     start_date,
     end_date,
     account_ids,
     transaction_ids,
   } = req.body;
+
+  // Clamp the limit. Without this a malicious or buggy client could request
+  // millions of rows and OOM the server (or just blow through LLM tokens).
+  // 500 is a sensible cap — categorize in batches for more.
+  const MAX_CATEGORIZE_LIMIT = 500;
+  const safeLimit = Math.min(
+    MAX_CATEGORIZE_LIMIT,
+    Math.max(1, Number.isFinite(Number(limit)) ? Number(limit) : 200)
+  );
 
   try {
     // Check if a job is already running for this user
@@ -249,12 +261,12 @@ router.post('/categorize-llm', async (req, res) => {
     const jobResult = db.prepare(`
       INSERT INTO categorize_jobs (user_id, status, items_total, started_at)
       VALUES (?, 'pending', ?, datetime('now'))
-    `).run(req.user.userId, Math.min(total, Number(limit)));
+    `).run(req.user.userId, Math.min(total, safeLimit));
     const jobId = jobResult.lastInsertRowid;
 
-    res.json({ job_id: jobId, total: Math.min(total, Number(limit)) });
+    res.json({ job_id: jobId, total: Math.min(total, safeLimit) });
 
-    runCategorizeJob(jobId, req.user.userId, { limit: Number(limit), scope, start_date, end_date, account_ids, transaction_ids }).catch(err => {
+    runCategorizeJob(jobId, req.user.userId, { limit: safeLimit, scope, start_date, end_date, account_ids, transaction_ids }).catch(err => {
       console.error(`[JOB ${jobId}] Failed:`, err);
     });
   } catch (err) {

@@ -45,11 +45,15 @@ A personal finance manager built with React and Express, powered by [SimpleFIN](
 - Email summaries — daily/weekly balance and transaction reports
 
 ### Security
-- JWT authentication with bcrypt passwords
+- JWT authentication with bcrypt passwords (Authorization header only — no token-in-URL)
 - Encrypted secrets at rest (AES-256-GCM)
-- Rate limiting on auth endpoints
+- Rate limiting on auth endpoints (login, register, forgot-password, reset-password)
 - CSP headers via Helmet
-- Receipt files served with auth token (supports viewing in new tabs)
+- Receipt files served via blob URL with Authorization header
+- Email verification required for new accounts (`email_verified=0` by default)
+- Magic-byte content validation on uploaded receipts (rejects spoofed mimetypes)
+- Per-connection sync lock prevents cron + manual sync races
+- WAL checkpoint on shutdown for crash safety
 
 ## Tech Stack
 
@@ -127,6 +131,7 @@ npm start
 │   ├── rules.js              # Pattern extraction & keyword rules
 │   ├── receipt-processor.js  # OCR + LLM receipt extraction + matching
 │   ├── image-preprocessor.js # Image trimming/resizing with sharp
+│   ├── default-keywords.js   # Shared merchant→category keyword list
 │   ├── receipt-watch.js      # File system watcher for drop folder
 │   ├── sync-tracker.js       # Sync rate limiting
 │   ├── scheduler.js          # Cron-based sync + cleanup schedulers

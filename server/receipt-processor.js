@@ -1,7 +1,7 @@
 import { createWorker } from 'tesseract.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { PDFParse } = require('pdf-parse');
+const pdfParse = require('pdf-parse');
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -44,12 +44,11 @@ export async function extractFromImage(filePath) {
 
 export async function extractFromPdf(filePath) {
   const buffer = fs.readFileSync(filePath);
-  const uint8Array = new Uint8Array(buffer);
-  const parser = new PDFParse(uint8Array);
-  await parser.load();
-  const result = await parser.getText();
-  parser.destroy();
-  return result.text;
+  // pdf-parse@2 exports a function that takes a Buffer and returns { text, numpages, ... }.
+  // Don't call it as a class constructor — that's a different (incompatible) API
+  // that throws "PDFParse is not a constructor".
+  const data = await pdfParse(buffer);
+  return data.text || '';
 }
 
 export async function extractReceiptWithLLM(userId, filePath, fileType) {
@@ -245,6 +244,8 @@ export function findMatchingTransactions(userId, receipt) {
   let candidates = [];
   if (receipt.extracted_date) {
     const dateStr = receipt.extracted_date;
+    // Amount is filtered with a small tolerance to avoid missing matches
+    // when totals differ by a cent or two (rounding, currency conversion, etc.)
     candidates = db.prepare(`
       SELECT t.id, t.posted, t.amount, t.description, a.name as account_name
       FROM transactions t
@@ -271,7 +272,15 @@ export function findMatchingTransactions(userId, receipt) {
 
   if (candidates.length === 0) return [];
 
-  const scored = candidates.map(txn => {
+  // Build ONE Fuse instance over all candidate descriptions, instead of
+  // building one per candidate inside the loop (O(n) construction cost).
+  let fuse = null;
+  if (receipt.extracted_vendor) {
+    fuse = new Fuse(candidates.map((c, i) => ({ ...c, _idx: i })),
+      { keys: ['description'], threshold: 0.8 });
+  }
+
+  const scored = candidates.map((txn, idx) => {
     let score = 0;
 
     if (receipt.extracted_total != null) {
@@ -301,11 +310,12 @@ export function findMatchingTransactions(userId, receipt) {
       else if (daysDiff <= 14) score += 0.1;
     }
 
-    if (receipt.extracted_vendor && txn.description) {
-      const fuse = new Fuse([{ text: txn.description }], { keys: ['text'], threshold: 0.8 });
+    if (fuse) {
       const results = fuse.search(receipt.extracted_vendor);
-      if (results.length > 0) {
-        score += 0.2 * (1 - results[0].score);
+      // Only count this candidate's own score, not all matches
+      const own = results.find(r => r.item._idx === idx);
+      if (own) {
+        score += 0.2 * (1 - own.score);
       }
     }
 

@@ -3,6 +3,7 @@ import { getDb } from '../db.js';
 import { exchangeToken, fetchAccounts, SimpleFinAuthError } from '../simplefin.js';
 import { canSyncConnection, getStartDateForSync, MAX_SYNCS_PER_DAY, MAX_LOOKBACK_DAYS } from '../sync-tracker.js';
 import { encrypt, decrypt } from '../crypto.js';
+import { sendMail } from '../email.js';
 
 const router = Router();
 
@@ -146,7 +147,11 @@ router.post('/:id/sync', async (req, res) => {
   try {
     await syncConnection(conn.id, req.user.userId, 'manual');
   } catch (err) {
-    console.error(`Sync failed for connection ${conn.id}:`, err.message);
+    if (err.message?.includes('already in progress')) {
+      console.warn(`[SYNC] Connection ${conn.id}: ${err.message}`);
+    } else {
+      console.error(`Sync failed for connection ${conn.id}:`, err.message);
+    }
   }
 });
 
@@ -199,11 +204,24 @@ router.post('/:id/reset', async (req, res) => {
   }
 });
 
+// Per-connection sync lock — prevents cron + manual syncs from racing
+// (which would double-count against the 24/day SimpleFIN limit and could
+// cause interleaved writes to the transactions table).
+const syncLocks = new Map();
+
 export async function syncConnection(connectionId, userId, source = 'manual', lookbackDays = null) {
+  if (syncLocks.get(connectionId)) {
+    throw new Error('A sync is already in progress for this connection');
+  }
+  syncLocks.set(connectionId, true);
+
   const db = getDb();
   const conn = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
     .get(connectionId, userId);
-  if (!conn) throw new Error('Connection not found');
+  if (!conn) {
+    syncLocks.delete(connectionId);
+    throw new Error('Connection not found');
+  }
 
   // Decrypt the access URL so fetchAccounts can use it
   const accessUrl = decrypt(conn.access_url);
@@ -213,6 +231,7 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
     'INSERT INTO sync_log (connection_id, started_at, source) VALUES (?, ?, ?)'
   ).run(connectionId, now, source);
   const logId = logEntry.lastInsertRowid;
+  const syncStartedAt = now;
 
   try {
     // Use custom lookback if provided (for deep sync after reauth), otherwise use normal calculation
@@ -290,13 +309,19 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
     // Auto-apply categorization rules to new uncategorized transactions
     try {
       const { applyRulesToTransactions } = await import('../rules.js');
+      // Only run rules against transactions added by THIS sync (created during
+      // or after the sync started). Without this filter, a 90-day deep sync
+      // would re-evaluate rules against every uncategorized transaction in
+      // history, which is both slow and a source of stale-rule churn.
       const newTxns = db.prepare(`
         SELECT t.id, t.description, t.amount, t.posted, t.account_id
         FROM transactions t
         JOIN accounts a ON a.id = t.account_id
         LEFT JOIN transaction_categories tc ON tc.transaction_id = t.id
-        WHERE a.connection_id = ? AND tc.id IS NULL
-      `).all(connectionId);
+        WHERE a.connection_id = ?
+          AND tc.id IS NULL
+          AND t.created_at >= ?
+      `).all(connectionId, syncStartedAt);
 
       if (newTxns.length > 0) {
         const matches = applyRulesToTransactions(userId, newTxns);
@@ -336,7 +361,6 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
     try {
       const user = db.prepare('SELECT email, name FROM users WHERE id = ?').get(userId);
       if (user?.email) {
-        const { sendMail } = await import('../email.js');
         const conn = db.prepare('SELECT name FROM connections WHERE id = ?').get(connectionId);
         const connName = conn?.name || 'your bank connection';
         const settingsUrl = `${process.env.APP_URL || 'http://localhost:4200'}/#/connections`;
@@ -375,6 +399,8 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
     }
 
     throw err;
+  } finally {
+    syncLocks.delete(connectionId);
   }
 }
 

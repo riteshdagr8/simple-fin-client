@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { getDb } from '../db.js';
 import { signToken, authMiddleware } from '../middleware/auth.js';
 import { generateToken, sendVerificationEmail, sendResetEmail } from '../email.js';
+import defaultKeywordRules from '../default-keywords.js';
 
 const router = Router();
 
@@ -68,9 +69,13 @@ router.post('/register', registerLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 12);
   const token = generateToken();
 
+  // New users are NOT verified by default. The /verify endpoint sets email_verified=1
+  // only after the user clicks the link in the email. Auto-login still issues a JWT
+  // so the UI can show "please verify your email" without forcing a re-login.
+  const sanitizedName = name.replace(/<[^>]*>/g, '').trim().slice(0, 100);
   const userResult = db.prepare(
-    'INSERT INTO users (email, password_hash, name, email_verified) VALUES (?, ?, ?, 1)'
-  ).run(email.toLowerCase(), passwordHash, name.trim());
+    'INSERT INTO users (email, password_hash, name, email_verified) VALUES (?, ?, ?, 0)'
+  ).run(email.toLowerCase(), passwordHash, sanitizedName);
 
   const userId = userResult.lastInsertRowid;
 
@@ -82,6 +87,12 @@ router.post('/register', registerLimiter, async (req, res) => {
 
   // Seed default categories for this user
   seedDefaultCategories(db, userId);
+
+  // Start a file-system watcher for this user's receipt folder so drop-folder
+  // uploads work for new users without requiring a server restart.
+  import('../receipt-watch.js').then(({ startWatchingUser }) => {
+    try { startWatchingUser(userId); } catch (e) { console.error('[RECEIPT-WATCH] Failed to start watcher for new user:', e.message); }
+  }).catch(() => {});
 
   // Send verification email (non-blocking)
   sendVerificationEmail(email, name, token).catch(err => {
@@ -177,7 +188,15 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
 });
 
 // Reset password
-router.post('/reset-password', async (req, res) => {
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many password reset attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post('/reset-password', resetPasswordLimiter, async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
   if (password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' });
@@ -236,30 +255,16 @@ function seedDefaultCategories(db, userId) {
     insert.run(userId, cat.name, cat.icon, cat.color);
   }
 
-  // Seed keyword rules for each category
-  const ruleDefs = [
-    { category: 'Groceries', keywords: ['LOBLAWS', 'SOBEYS', 'METRO', 'FOOD BASICS', 'FRESHCO', 'LONGOS', 'FORTINOS', 'FARM BOY', 'NATURAL GROCERS', 'COSTCO WHOLESALE', 'WHOLE FOODS', 'TRADER JOES', 'SUPERSTORE', 'REAL CANADIAN', 'NO FRILLS', 'PROVIGO', 'IGA', 'MAXI', 'MARCHE', 'PROVIGO', 'VALU MART', 'FOODLAND', 'GIANT TIGER', 'WALMART GROCERY', 'WALMART SUPERC'] },
-    { category: 'Dining', keywords: ['STARBUCKS', 'TIM HORTONS', 'TIM HORTON', 'MCDONALD', 'SUBWAY', 'A&W', 'HARVEY', 'SWISS CHALET', 'PIZZA HUT', 'DOMINOS', 'DOORDASH', 'UBER EATS', 'SKIP THE DISHES', 'SKIP THE DISH', 'GRUBHUB', 'POPEYES', 'WENDY', 'BURGER KING', 'KFC', 'TACO BELL', 'FATBURGER', 'PANDA EXPRESS', 'PHO', 'SUSHI', 'RESTAURANT', 'CAFÉ', 'COFFEE', 'COFFEE SHOP'] },
-    { category: 'Insurance', keywords: ['INTACT', 'AVIVA', 'DESJARDINS', 'STATE FARM', 'ALLSTATE', 'GEICO', 'PROGRESSIVE', 'LIBERTY MUTUAL', 'NATIONWIDE', 'USAA', 'FARMERS', 'INSURANCE', 'HOME INSURANCE', 'AUTO INSURANCE', 'LIFE INSURANCE', 'HEALTH INSURANCE', 'RBC INSURANCE', 'TD INSURANCE', 'WAWANESA'] },
-    { category: 'Gas/Auto', keywords: ['SHELL', 'ESSO', 'PETRO-CANADA', 'PETRO CANADA', 'SUNOCO', 'HUSKY', 'COSTCO GAS', 'CANADIAN TIRE GAS', 'MR. LUBE', 'MR LUBE', 'JIFFY LUBE', 'MIDAS', 'CANADIAN TIRE GASOLINE', 'KAL TIRE', 'CALTAIRE', 'VALVOLINE', 'OIL CHANGE', 'TIRE', 'WHEEL', 'AUTO', 'CAR WASH', 'SERVICE GAS'] },
-    { category: 'Shopping', keywords: ['AMAZON', 'WALMART', 'BEST BUY', 'IKEA', 'WINNERS', 'MARSHALLS', 'HOMESENSE', 'HOME DEPOT', 'LOWES', 'HOME HARDWARE', 'RONA', 'CANADIAN TIRE', 'THE BAY', 'HBC', 'NORDSTROM', 'SEPHORA', 'STAPLES', 'DOLLARAMA', 'DOLLAR TREE', 'WALMART', 'SHOPPERS DRUG MART', 'PHARMASAVE', 'SHOES', 'CLOTHING'] },
-    { category: 'Entertainment', keywords: ['NETFLIX', 'SPOTIFY', 'DISNEY PLUS', 'DISNEY+', 'CRAPPLE MUSIC', 'APPLE MUSIC', 'YOUTUBE', 'STEAM', 'PLAYSTATION', 'XBOX', 'NINTENDO', 'GOG.COM', 'EPIC GAMES', 'HULU', 'AMAZON PRIME', 'AMCR+', 'CRUNCHYROLL', 'APPLE TV', 'BELL MEDIA', 'ROGERS MEDIA', 'CINEMA', 'MOVIE', 'THEATRE', 'AMC', 'CINEPLEX', 'TIKTOK', 'TWITCH', 'AMAZON PRIME VIDEO', 'DISNEY+'] },
-    { category: 'Travel', keywords: ['AIR CANADA', 'WESTJET', 'PORTER', 'FLAIR', 'SUNWING', 'TRANSCAFTA', 'AIR TRANSAT', 'VIA RAIL', 'GO TRANSIT', 'MARQUIS', 'MARRIOTT', 'HILTON', 'HYATT', 'ACCOR', 'IHG', 'BEST WESTERN', 'AIRBNB', 'BOOKING.COM', 'EXPEDIA', 'TRIPADVISOR', 'VIA RAIL', 'BUSBUD', 'RENTAL', 'TOLL', 'PARKING', 'AIRPORT', 'LOUNGE', 'HOTEL', 'MOTEL', 'INN', 'YOUTH HOSTEL'] },
-    { category: 'Education', keywords: ['UNIVERSITY', 'COLLEGE', 'TUITION', 'SCHOOL', 'COURSERA', 'UDEMY', 'LYNDA', 'PLURALSIGHT', 'LEARNER', 'EDUCATION', 'SCHOLARSHIP', 'STUDENT LOAN', 'BOOKS', 'CANVAS', 'BLACKBOARD', 'MYCLASS', 'WILFRID LAURIER', 'UNIVERSITY OF TORONTO', 'RYERSON', 'TMU', 'YORK UNIVERSITY', 'SENeca'] },
-    { category: 'Utilities', keywords: ['BELL CANADA', 'ROGERS', 'TELUS', 'SHAW', 'FIDO', 'KOODO', 'FREEDOM MOBILE', 'FIDO', 'TELUS MOBILITY', 'ROGERS WIRELESS', 'TELUS MOBILE', 'TELUS INTERNET', 'ROGERS INTERNET', 'BELL MOBILITY', 'BELL MTS', 'FREEDOM', 'KOODO', 'TELUS', 'ROGERS', 'BELL', 'HYDRO', 'HYDRO QUEBEC', 'HYDRO OTTAWA', 'HYDRO ONE', 'ENBRIDGE', 'ENMAX', 'ATCO', 'FORTIS', 'TRANSALTA', 'BC HYDRO', 'BC HYDRO', 'ONTARIO HYDRO', 'INTACT', 'OVO', 'ENBRIDGE GAS', 'ENBRIDGE GAS INC', 'HYDRO OTTAWA', 'BELL MOBILITY', 'ROGERS WIRELESS', 'ROGERS COMMUNICATIONS', 'SHAW COMMUNICATIONS', 'TELUS MOBILITY'] },
-    { category: 'Tax/Fee', keywords: ['CRA', 'GOVERNMENT OF CANADA', 'GOVERNMENT OF ONTARIO', 'GOVERNMENT OF QUEBEC', 'GOVERNMENT OF BRITISH COLUMBIA', 'REVENUE', 'TAX', 'FEE', 'PENALTY', 'SERVICE CHARGE', 'ADMIN FEE', 'MAINTENANCE FEE', 'MONTHLY FEE', 'ACCOUNT FEE', 'TRANSACTION FEE', 'TAX REFUND', 'PROPERTY TAX', 'INCOME TAX'] },
-    { category: 'Healthcare', keywords: ['SHOPPERS DRUG MART', 'REXALL', 'PHARMASAVE', 'JEAN COUTU', 'BRUNET', 'UNIPRIX', 'UNIPRIX', 'DOCTOR', 'PHYSICIAN', 'HOSPITAL', 'DENTAL', 'DENTIST', 'VISION', 'EYEGLASSES', 'OPTOMETRIST', 'OPTICIAN', 'CHIROPRACTOR', 'MASSAGE THERAPY', 'PHYSIOTHERAPY', 'MENTAL HEALTH', 'PSYCHOLOGIST', 'PSYCHIATRIST', 'CLINIC', 'MEDICAL', 'LAB', 'IMAGING', 'X-RAY', 'BLOOD WORK', 'PRESCRIPTION', 'RX'] },
-    { category: 'Income', keywords: ['PAYROLL', 'SALARY', 'DIRECT DEPOSIT', 'EMPLOYER', 'DIVIDEND', 'INTEREST', 'TRANSFER IN', 'DEPOSIT', 'EMPLOYMENT', 'WAGES', 'BONUS', 'COMMISSION', 'REFUND', 'CREDIT', 'REIMBURSEMENT', 'GARNISHMENT', 'CHILD SUPPORT'] },
-    { category: 'Transfer', keywords: ['E-TRANSFER', 'INTERAC', 'INTERAC E-TRANSFER', 'TRANSFER OUT', 'TRANSFER IN', 'BILL PAYMENT', 'BILL PAY', 'BIL', 'PAYMENT TO', 'PAYMENT FROM', 'INTER-ACCOUNT', 'INTER ACCOUNT', 'RECURRING PAYMENT', 'PRE-AUTHORIZED', 'PREAUTHORIZED', 'PRE-AUTH', 'PREAUTH', 'DIRECT DEBIT', 'PAD PAYMENT'] },
-  ];
-
+  // Seed keyword rules for each category using the shared default list.
+  // (Previously this list was duplicated here and in routes/categories.js —
+  // now both use server/default-keywords.js as the single source of truth.)
   const insertRule = db.prepare(`
     INSERT OR IGNORE INTO category_rules
       (user_id, category_id, rule_type, match_text, account_ids, patterns, pattern_threshold, priority, enabled)
     VALUES (?, ?, 'keyword', ?, 'all', '[]', 0.6, 0, 1)
   `);
   const getCat = db.prepare('SELECT id FROM categories WHERE user_id = ? AND name = ?');
-  for (const rule of ruleDefs) {
+  for (const rule of defaultKeywordRules) {
     const cat = getCat.get(userId, rule.category);
     if (!cat) continue;
     for (const kw of rule.keywords) {

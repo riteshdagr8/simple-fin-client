@@ -81,7 +81,7 @@ router.get('/', (req, res) => {
       AND (a.id IS NULL OR (a.is_hidden IS NULL OR a.is_hidden = 0))
     GROUP BY cat.id
     ORDER BY total ASC
-  `).all(...dateParams, uid);
+  `).all(uid, ...dateParams);
 
   // Total spend across ALL transactions (categorized + uncategorized)
   const periodSpend = db.prepare(`
@@ -92,7 +92,7 @@ router.get('/', (req, res) => {
     WHERE c.user_id = ? AND t.amount < 0
       AND (a.is_hidden IS NULL OR a.is_hidden = 0)
       ${dateWhere}
-  `).get(...dateParams, uid);
+  `).get(uid, ...dateParams);
 
   res.json({
     totalBalance: balances.total_balance,

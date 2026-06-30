@@ -181,10 +181,13 @@ if (process.env.NODE_ENV !== 'production') {
     logLevel: 'silent',
   }));
 } else {
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  });
-  app.get('/{*rest}', (req, res) => {
+  // Serve built assets (JS/CSS in /assets) before the SPA fallback
+  app.use(express.static(path.join(__dirname, '..', 'dist')));
+  // SPA fallback — any non-API GET returns index.html so client-side routing works.
+  // We use a middleware (not a route) so it doesn't conflict with the static
+  // middleware above and works for any URL the client-side router might request.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
   });
 }
@@ -200,14 +203,32 @@ const server = app.listen(PORT, () => {
   });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('[SHUTDOWN] SIGTERM received — shutting down gracefully...');
-  const { getDb } = require('./db.js');
-  try { getDb().close(); } catch {}
-  try { require('node-cron').stopAll(); } catch {}
+// Graceful shutdown — uses dynamic import because this is an ESM module
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+async function shutdown() {
+  console.log('[SHUTDOWN] Signal received — shutting down gracefully...');
+  try {
+    const { getDb } = await import('./db.js');
+    try { getDb().pragma('wal_checkpoint(TRUNCATE)'); } catch (e) { console.error('[SHUTDOWN] WAL checkpoint failed:', e.message); }
+    try { getDb().close(); } catch {}
+  } catch (e) {
+    console.error('[SHUTDOWN] DB close failed:', e.message);
+  }
+  try {
+    const cron = await import('node-cron');
+    cron.default.getTasks().forEach(t => t.stop());
+  } catch (e) {
+    console.error('[SHUTDOWN] Cron stop failed:', e.message);
+  }
   server.close(() => {
     console.log('[SHUTDOWN] Server closed');
     process.exit(0);
   });
-});
+  // Force exit if graceful close takes too long
+  setTimeout(() => {
+    console.warn('[SHUTDOWN] Forced exit after 10s timeout');
+    process.exit(1);
+  }, 10000).unref();
+}

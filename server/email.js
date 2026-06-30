@@ -7,6 +7,17 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const RESEND_FROM = process.env.RESEND_FROM || 'FinApp <noreply@finapp.local>';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
+// In production, refuse to start if APP_URL is plain http — verification and
+// reset tokens would travel in plaintext over the wire. (For dev/local use the
+// http://localhost default is fine.)
+if (process.env.NODE_ENV === 'production' && APP_URL.startsWith('http://')) {
+  console.warn(
+    '[EMAIL] WARNING: APP_URL is using http:// in production. ' +
+    'Password-reset and email-verification tokens will be sent in plaintext. ' +
+    'Set APP_URL to an https:// URL.'
+  );
+}
+
 console.log(`[EMAIL] Resend configured: ${!!RESEND_API_KEY} | FROM: "${RESEND_FROM}" | APP_URL: "${APP_URL}"`);
 
 let resend;
@@ -22,10 +33,14 @@ function getResend() {
   return resend;
 }
 
-async function sendMail(to, subject, html) {
+export async function sendMail(to, subject, html) {
   const r = getResend();
   if (!r) {
-    console.log(`[EMAIL] To: ${to}\nSubject: ${subject}\n${html.replace(/<[^>]+>/g, '')}`);
+    // Email isn't configured — fall back to a console log for local dev.
+    // We log only the envelope (to / subject), NOT the html body, which can
+    // contain password-reset and email-verification tokens. If you're
+    // debugging a token issue, look in the DB (email_tokens / reset_tokens).
+    console.log(`[EMAIL] (dry-run) To: ${to} | Subject: ${subject}`);
     return Promise.resolve();
   }
   try {

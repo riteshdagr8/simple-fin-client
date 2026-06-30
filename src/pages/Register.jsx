@@ -7,7 +7,6 @@ export default function Register({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

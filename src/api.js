@@ -148,5 +148,18 @@ export const api = {
   getReceiptCandidates: (id) => request(`/receipts/${id}/candidates`),
   deleteReceipt: (id) => request(`/receipts/${id}`, { method: 'DELETE' }),
   deleteReceiptFile: (id) => request(`/receipts/${id}/file`, { method: 'DELETE' }),
-  getReceiptFile: (id) => `${BASE}/receipts/${id}/file?token=${encodeURIComponent(authToken || '')}`,
+  // Returns a blob URL (object URL) for the receipt file. Caller is responsible
+  // for revoking it with URL.revokeObjectURL when no longer needed.
+  // We can't use a direct src= because <img>/<a> can't send Authorization headers.
+  getReceiptFile: async (id) => {
+    const res = await fetch(`${BASE}/receipts/${id}/file`, {
+      headers: { 'Authorization': `Bearer ${authToken || ''}` },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 };

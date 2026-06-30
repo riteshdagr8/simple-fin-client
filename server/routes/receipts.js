@@ -24,24 +24,60 @@ const storage = multer.diskStorage({
     cb(null, userDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
+    const ext = path.extname(file.originalname).toLowerCase();
+    // Only allow known-safe extensions regardless of declared mimetype
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.pdf'];
+    const safeExt = allowed.includes(ext) ? ext : '.bin';
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}${safeExt}`;
     cb(null, filename);
   },
 });
+
+const ALLOWED_MIME = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'application/pdf',
+]);
 
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'application/pdf'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only images and PDFs are allowed.'));
+    // Whitelist the declared mimetype (client-controlled, but rejects obvious junk)
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only images and PDFs are allowed.'));
     }
+    cb(null, true);
   },
 });
+
+// Verify the file's actual content matches its claimed type. The multer
+// fileFilter above trusts the client-supplied mimetype, which is trivial to
+// spoof — an attacker could upload an .exe with Content-Type: image/jpeg.
+// We re-check the first few bytes (magic numbers) to confirm the file is
+// actually what the client claims. If not, delete it and reject the upload.
+const MAGIC = [
+  { ext: 'pdf',  bytes: [0x25, 0x50, 0x44, 0x46] },                          // %PDF
+  { ext: 'jpg',  bytes: [0xFF, 0xD8, 0xFF] },                                  // JPEG
+  { ext: 'jpeg', bytes: [0xFF, 0xD8, 0xFF] },
+  { ext: 'png',  bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] },  // PNG
+  { ext: 'gif',  bytes: [0x47, 0x49, 0x46, 0x38] },                           // GIF8
+  { ext: 'bmp',  bytes: [0x42, 0x4D] },                                        // BM
+  { ext: 'tif',  bytes: [0x49, 0x49, 0x2A, 0x00] },                            // TIFF (little-endian)
+  { ext: 'tiff', bytes: [0x49, 0x49, 0x2A, 0x00] },
+];
+function verifyMagicBytes(filePath) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(8);
+    fs.readSync(fd, buf, 0, 8, 0);
+    for (const m of MAGIC) {
+      if (m.bytes.every((b, i) => buf[i] === b)) return m.ext;
+    }
+    return null;
+  } finally {
+    if (fd != null) fs.closeSync(fd);
+  }
+}
 
 const router = Router();
 
@@ -106,15 +142,25 @@ router.post('/upload', upload.single('receipt'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Defense-in-depth: verify the file's actual content matches the
+    // declared type. The multer fileFilter above only checks mimetype, which
+    // is supplied by the client and trivially spoofable. If the bytes don't
+    // match, delete the file and reject the upload.
+    const detectedExt = verifyMagicBytes(req.file.path);
+    if (!detectedExt) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'File contents do not match an allowed image or PDF format' });
+    }
+
     const db = getDb();
     const { amount, description } = req.body;
 
     const parsedAmount = amount ? parseFloat(amount) : null;
     if (parsedAmount != null && isNaN(parsedAmount)) {
+      fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'amount must be a number' });
     }
 
-    const ext = path.extname(req.file.originalname).toLowerCase();
     const result = db.prepare(`
       INSERT INTO receipts (user_id, filename, original_name, file_type, amount, description, ocr_status)
       VALUES (?, ?, ?, ?, ?, ?, 'pending')
@@ -122,7 +168,7 @@ router.post('/upload', upload.single('receipt'), async (req, res) => {
       req.user.userId,
       req.file.filename,
       req.file.originalname,
-      ext.slice(1),
+      detectedExt,
       parsedAmount,
       description || null
     );
@@ -167,6 +213,7 @@ router.post('/:id/rematch', async (req, res) => {
   // If reextract is explicitly requested, re-run the full extraction process
   // Also auto-re-extract if receipt has no extracted data and LLM is enabled
   const hasNoData = receipt.extracted_total == null && receipt.extracted_date == null && receipt.extracted_vendor == null;
+  // Fetch the LLM config once and reuse below (don't re-query)
   const llmConfig = db.prepare('SELECT use_llm_for_receipts FROM user_llm_config WHERE user_id = ?').get(req.user.userId);
   const shouldReextract = req.query.reextract === '1' || (hasNoData && llmConfig?.use_llm_for_receipts);
 
@@ -190,7 +237,6 @@ router.post('/:id/rematch', async (req, res) => {
     let finalMatchId = bestMatch.id;
     let finalScore = bestMatch.score;
 
-    const llmConfig = db.prepare('SELECT use_llm_for_receipts FROM user_llm_config WHERE user_id = ?').get(req.user.userId);
     if (llmConfig?.use_llm_for_receipts && bestMatch.score < 0.7) {
       const llmMatchId = await matchReceiptWithLLM(req.user.userId, receipt.ocr_text, candidates);
       if (llmMatchId) {
@@ -261,7 +307,7 @@ router.post('/:id/match', (req, res) => {
 });
 
 // Delete file only (keep receipt record)
-router.delete('/:id/file', (req, res) => {
+router.delete('/:id/file', async (req, res) => {
   const db = getDb();
   const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.userId);
@@ -269,7 +315,8 @@ router.delete('/:id/file', (req, res) => {
 
   const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
   if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
+    // Async unlink so we don't block the event loop on large files
+    await fs.promises.unlink(filePath).catch(() => {});
     res.json({ success: true, deleted: true });
   } else {
     res.json({ success: true, deleted: false, message: 'File already removed' });
@@ -277,21 +324,24 @@ router.delete('/:id/file', (req, res) => {
 });
 
 // Delete a receipt
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   const db = getDb();
   const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.userId);
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
-  // Delete file from disk
+  // Delete file from disk (async, non-blocking)
   const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  if (fs.existsSync(filePath)) {
+    await fs.promises.unlink(filePath).catch(() => {});
+  }
 
   db.prepare('DELETE FROM receipts WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-// Serve receipt files
+// Serve receipt files — auth via Authorization header, NOT query param
+// (query params leak into browser history, referrers, server logs, CDN logs)
 router.get('/:id/file', (req, res) => {
   const db = getDb();
   const receipt = db.prepare('SELECT filename, file_type FROM receipts WHERE id = ? AND user_id = ?')
@@ -299,9 +349,28 @@ router.get('/:id/file', (req, res) => {
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
 
   const filePath = path.join(RECEIPTS_DIR, req.user.userId.toString(), receipt.filename);
+
+  // Defense-in-depth: verify resolved path is inside the receipts dir
+  // (prevents path traversal even if multer's UUID filename scheme is bypassed)
+  const resolved = path.resolve(filePath);
+  const expectedDir = path.resolve(RECEIPTS_DIR, req.user.userId.toString());
+  if (!resolved.startsWith(expectedDir + path.sep) && resolved !== expectedDir) {
+    return res.status(400).json({ error: 'Invalid file path' });
+  }
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
 
-  res.sendFile(filePath);
+  // Set a content type hint for common file types
+  const mime = receipt.file_type === 'pdf' ? 'application/pdf'
+    : ['jpg', 'jpeg'].includes(receipt.file_type) ? 'image/jpeg'
+    : receipt.file_type === 'png' ? 'image/png'
+    : receipt.file_type === 'gif' ? 'image/gif'
+    : 'application/octet-stream';
+  res.setHeader('Content-Type', mime);
+
+  // Inline so receipts render in the browser instead of downloading
+  res.setHeader('Content-Disposition', 'inline');
+
+  res.sendFile(resolved);
 });
 
 export default router;

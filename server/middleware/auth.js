@@ -28,8 +28,7 @@ function isTokenStale(userId, tokenIat) {
 
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  const queryToken = req.query.token;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : queryToken;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

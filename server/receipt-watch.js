@@ -30,6 +30,9 @@ function startWatchingUser(userId) {
 
   const watcher = chokidar.watch(userDir, {
     persistent: true,
+    // Process files that exist when the watcher starts (covers the case
+    // where a user drops a file while the server is down). The DB dedup
+    // check below prevents reprocessing files we already know about.
     ignoreInitial: false,
     awaitWriteFinish: {
       stabilityThreshold: 500,

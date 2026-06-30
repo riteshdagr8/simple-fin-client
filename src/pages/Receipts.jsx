@@ -16,7 +16,19 @@ export default function Receipts() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [deleteDialog, setDeleteDialog] = useState({ open: false, receiptId: null });
+  const [detailUrl, setDetailUrl] = useState(null);
   const fileRef = useRef();
+
+  // Load full-size detail URL as a blob (since <img>/<a> can't send Authorization headers)
+  useEffect(() => {
+    if (!selected) { setDetailUrl(null); return; }
+    let revoked = false;
+    let objectUrl = null;
+    api.getReceiptFile(selected)
+      .then(url => { if (!revoked) { objectUrl = url; setDetailUrl(url); } })
+      .catch(err => { if (!revoked) console.error('Failed to load receipt:', err); });
+    return () => { revoked = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [selected]);
 
   useEffect(() => {
     loadReceipts();
@@ -252,7 +264,7 @@ export default function Receipts() {
                       PDF
                     </div>
                   ) : (
-                    <img src={api.getReceiptFile(r.id)} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                    <ReceiptThumb id={r.id} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -286,11 +298,19 @@ export default function Receipts() {
                 <div style={{ padding: 24, background: '#f5f5f5', borderRadius: 'var(--radius)', textAlign: 'center' }}>
                   <div style={{ fontSize: '2rem', marginBottom: 8 }}>📄</div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>PDF Receipt</div>
-                  <a href={api.getReceiptFile(selected)} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem' }}>View PDF</a>
+                  {detailUrl ? (
+                    <a href={detailUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem' }}>View PDF</a>
+                  ) : (
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Loading…</span>
+                  )}
                 </div>
-              ) : (
-                <img src={api.getReceiptFile(selected)} alt="Receipt"
+              ) : detailUrl ? (
+                <img src={detailUrl} alt="Receipt"
                   style={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 'var(--radius)', background: '#f5f5f5' }} />
+              ) : (
+                <div style={{ padding: 24, background: '#f5f5f5', borderRadius: 'var(--radius)', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  Loading…
+                </div>
               )}
 
               {/* Extracted data */}
@@ -543,4 +563,23 @@ export default function Receipts() {
       />
     </div>
   );
+}
+
+// Small thumbnail that fetches the receipt via the authenticated endpoint
+// and renders via a blob URL. <img src> can't send Authorization headers,
+// so we can't just point src at the file URL.
+function ReceiptThumb({ id }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let revoked = false;
+    let objectUrl = null;
+    api.getReceiptFile(id)
+      .then(u => { if (!revoked) { objectUrl = u; setUrl(u); } })
+      .catch(() => {});
+    return () => { revoked = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [id]);
+  if (!url) {
+    return <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--surface-2)' }} />;
+  }
+  return <img src={url} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />;
 }
