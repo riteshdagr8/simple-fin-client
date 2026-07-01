@@ -1,7 +1,5 @@
 import { createWorker } from 'tesseract.js';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import { PDFParse } from 'pdf-parse';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -44,11 +42,18 @@ export async function extractFromImage(filePath) {
 
 export async function extractFromPdf(filePath) {
   const buffer = fs.readFileSync(filePath);
-  // pdf-parse@2 exports a function that takes a Buffer and returns { text, numpages, ... }.
-  // Don't call it as a class constructor — that's a different (incompatible) API
-  // that throws "PDFParse is not a constructor".
-  const data = await pdfParse(buffer);
-  return data.text || '';
+  // pdf-parse@2.x exports a PDFParse class. It expects a LoadParameters object
+  // with a `data` field (Uint8Array or Buffer), not a raw buffer as the
+  // constructor argument. Without wrapping, this throws "TypeError: PDFParse
+  // is not a function" when called as a function, or a confusing internal
+  // error when constructed without an object.
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    const result = await parser.getText();
+    return result?.text || '';
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
 }
 
 export async function extractReceiptWithLLM(userId, filePath, fileType) {
