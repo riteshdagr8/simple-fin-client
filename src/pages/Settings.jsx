@@ -396,45 +396,33 @@ export default function Settings({ setTheme }) {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 12,
+          gridTemplateColumns: 'repeat(3, auto)',
+          gap: 10,
           marginBottom: 16,
         }}>
           {[
             {
               id: 'emerald',
-              label: 'Emerald Prestige',
-              desc: 'Deep emerald with gold. Luxury and authority.',
               swatches: ['#0d6b3e', '#4a9e6a', '#8fbf6a', '#c9a84c', '#f5f0e0'],
             },
             {
               id: 'midnight',
-              label: 'Midnight Indigo',
-              desc: 'Deep navy with electric indigo. Sophisticated tech.',
               swatches: ['#0f111a', '#1a1d2e', '#4a4e8a', '#7c3aed', '#a78bfa'],
             },
             {
               id: 'ember',
-              label: 'Charcoal & Ember',
-              desc: 'Dark charcoal with warm ember accents.',
               swatches: ['#141414', '#2a2a2a', '#555555', '#d96c1a', '#f5a060'],
             },
             {
               id: 'noir',
-              label: 'Noir & Gold',
-              desc: 'Black with luxurious gold. High-end editorial.',
               swatches: ['#0a0a0a', '#323232', '#666666', '#c9a84c', '#e8d48b'],
             },
             {
               id: 'cloud',
-              label: 'Cloud White',
-              desc: 'Airy whites and soft grays with a blue tint.',
               swatches: ['#ffffff', '#e0e4ea', '#94a3b8', '#64748b', '#3b82f6'],
             },
             {
               id: 'ocean',
-              label: 'Ocean Deep',
-              desc: 'Deep blues and teals. Calm and trustworthy.',
               swatches: ['#0f1a2e', '#0d5e5e', '#0d8b8b', '#5ecfcf', '#a8e6e6'],
             },
           ].map(opt => (
@@ -484,12 +472,10 @@ export default function Settings({ setTheme }) {
               <div style={{
                 display: 'flex',
                 gap: 6,
-                marginBottom: 12,
               }}>
                 {opt.swatches.map((color, i) => (
                   <div
                     key={i}
-                    title={color}
                     style={{
                       width: 28,
                       height: 28,
@@ -502,12 +488,6 @@ export default function Settings({ setTheme }) {
                 ))}
               </div>
 
-              <div style={{ fontWeight: 650, fontSize: '0.9rem', marginBottom: 2 }}>
-                {opt.label}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
-                {opt.desc}
-              </div>
             </button>
           ))}
         </div>
