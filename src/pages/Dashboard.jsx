@@ -125,16 +125,8 @@ export default function Dashboard() {
         )}
 
         {uncategorizedCount > 0 && (
-          <div
-            onClick={() => { window.location.hash = '#/transactions'; }}
-            style={{
-              marginBottom: 12, padding: '10px 14px', borderRadius: 'var(--radius)',
-              background: 'var(--accent-soft)', border: '1px solid var(--accent)',
-              display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-              fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 500,
-            }}
-            title="Click to go to Transactions and categorize"
-          >
+          <div className="uncategorized-banner"
+               onClick={() => { window.location.hash = '#/transactions'; }}>
             <span>📌</span>
             <span>{uncategorizedCount} transaction{uncategorizedCount !== 1 ? 's' : ''} uncategorized</span>
             <span style={{ opacity: 0.7 }}>→</span>
@@ -201,10 +193,9 @@ export default function Dashboard() {
                   <td style={{ fontSize: '0.85rem' }}>{txn.description}</td>
                   <td>
                     {txn.category_name ? (
-                      <span style={{
-                        fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10,
-                        background: txn.category_color + '22', color: txn.category_color,
-                        fontWeight: 500,
+                      <span className="category-badge" style={{
+                        background: txn.category_color + '22',
+                        color: txn.category_color,
                       }}>
                         {txn.category_icon} {txn.category_name}
                       </span>

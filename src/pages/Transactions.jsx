@@ -463,11 +463,11 @@ function CategorySelector({ txnId, categoryId, categoryName, categoryIcon, categ
   const trigger = categoryId ? (
     <span
       onClick={() => setOpen(!open)}
+      className="category-badge"
       style={{
-        fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
+        cursor: 'pointer',
         background: (categoryColor || '#9ca3af') + '22',
         color: categoryColor || 'var(--text)',
-        fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4,
       }}
       title="Click to change category"
     >

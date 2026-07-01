@@ -571,13 +571,16 @@ export default function Receipts() {
 function ReceiptThumb({ id }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
-    let revoked = false;
-    let objectUrl = null;
+    let cancelled = false;
     api.getReceiptFile(id)
-      .then(u => { if (!revoked) { objectUrl = u; setUrl(u); } })
-      .catch(() => {});
-    return () => { revoked = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+      .then(u => { if (!cancelled) setUrl(u); })
+      .catch(err => console.warn(`[ReceiptThumb] Failed to load ${id}:`, err));
+    return () => { cancelled = true; };
   }, [id]);
+  // Revoke old blob URL when id changes or component unmounts
+  useEffect(() => {
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [url]);
   if (!url) {
     return <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--surface-2)' }} />;
   }
