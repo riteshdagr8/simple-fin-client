@@ -29,7 +29,7 @@ export default function Settings({ setTheme }) {
   const [syncSaving, setSyncSaving] = useState(false);
   const [syncSaved, setSyncSaved] = useState(false);
 
-  const [theme, setLocalTheme] = useState('minimal');
+  const [theme, setLocalTheme] = useState('cloud');
 
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [emailFrequency, setEmailFrequency] = useState(6);
@@ -59,7 +59,7 @@ export default function Settings({ setTheme }) {
     api.getSyncSettings()
       .then(s => {
         setSyncInterval(s.sync_interval_hours || 2);
-        setLocalTheme(s.ui_theme || 'minimal');
+        setLocalTheme(s.ui_theme || 'cloud');
       })
       .catch(() => {});
     api.getEmailSummarySettings()
@@ -180,10 +180,6 @@ export default function Settings({ setTheme }) {
     }
   };
 
-  const themePreview = (id) => ({
-    minimal: 'Subtle grays, sharp edges, focus on data.',
-    colorful: 'Vibrant gradients, rounded cards, expressive typography.',
-  })[id];
 
   if (loading) return <div className="empty-state"><p><span className="spinner" /> Loading...</p></div>;
 
@@ -398,10 +394,49 @@ export default function Settings({ setTheme }) {
           Choose how the app looks. Changes apply immediately when you click Save.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 12,
+          marginBottom: 16,
+        }}>
           {[
-            { id: 'minimal', label: 'Modern Minimal', sample: { bg: '#f5f5f5', surface: '#ffffff', accent: '#2563eb' } },
-            { id: 'colorful', label: 'Bold Colorful', sample: { bg: 'linear-gradient(135deg, #fef3c7, #fce7f3, #dbeafe)', surface: '#ffffff', accent: 'linear-gradient(135deg, #7c3aed, #ec4899)' } },
+            {
+              id: 'emerald',
+              label: 'Emerald Prestige',
+              desc: 'Deep emerald with gold. Luxury and authority.',
+              swatches: ['#0d6b3e', '#4a9e6a', '#8fbf6a', '#c9a84c', '#f5f0e0'],
+            },
+            {
+              id: 'midnight',
+              label: 'Midnight Indigo',
+              desc: 'Deep navy with electric indigo. Sophisticated tech.',
+              swatches: ['#0f111a', '#1a1d2e', '#4a4e8a', '#7c3aed', '#a78bfa'],
+            },
+            {
+              id: 'ember',
+              label: 'Charcoal & Ember',
+              desc: 'Dark charcoal with warm ember accents.',
+              swatches: ['#141414', '#2a2a2a', '#555555', '#d96c1a', '#f5a060'],
+            },
+            {
+              id: 'noir',
+              label: 'Noir & Gold',
+              desc: 'Black with luxurious gold. High-end editorial.',
+              swatches: ['#0a0a0a', '#323232', '#666666', '#c9a84c', '#e8d48b'],
+            },
+            {
+              id: 'cloud',
+              label: 'Cloud White',
+              desc: 'Airy whites and soft grays with a blue tint.',
+              swatches: ['#ffffff', '#e0e4ea', '#94a3b8', '#64748b', '#3b82f6'],
+            },
+            {
+              id: 'ocean',
+              label: 'Ocean Deep',
+              desc: 'Deep blues and teals. Calm and trustworthy.',
+              swatches: ['#0f1a2e', '#0d5e5e', '#0d8b8b', '#5ecfcf', '#a8e6e6'],
+            },
           ].map(opt => (
             <button
               key={opt.id}
@@ -409,25 +444,69 @@ export default function Settings({ setTheme }) {
               onClick={() => setLocalTheme(opt.id)}
               style={{
                 padding: 16,
-                border: theme === opt.id ? '2px solid var(--accent)' : '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                background: opt.sample.bg,
+                borderRadius: 'var(--radius-lg)',
+                border: theme === opt.id ? '2px solid var(--accent)' : '2px solid transparent',
+                background: theme === opt.id ? 'var(--accent-soft)' : 'var(--surface)',
                 textAlign: 'left',
                 cursor: 'pointer',
-                color: '#1a1a1a',
-                boxShadow: theme === opt.id ? '0 0 0 3px var(--accent-soft)' : 'none',
+                color: 'var(--text)',
+                boxShadow: theme === opt.id
+                  ? '0 0 0 1px var(--accent), 0 4px 12px var(--accent-soft)'
+                  : '0 1px 3px rgba(0,0,0,0.06)',
+                position: 'relative',
+                transition: 'all 0.15s ease',
+                outline: 'none',
               }}
             >
-              <div style={{ background: opt.sample.surface, padding: 8, borderRadius: 6, marginBottom: 8, border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div style={{ height: 6, width: 40, background: typeof opt.sample.accent === 'string' && opt.sample.accent.startsWith('linear') ? opt.sample.accent : opt.sample.accent, borderRadius: 3, marginBottom: 6 }} />
-                <div style={{ height: 4, width: '70%', background: '#e5e7eb', borderRadius: 2, marginBottom: 4 }} />
-                <div style={{ height: 4, width: '50%', background: '#e5e7eb', borderRadius: 2 }} />
+              {/* Checkmark for selected */}
+              {theme === opt.id && (
+                <div style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}>
+                  ✓
+                </div>
+              )}
+
+              {/* Swatch row */}
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                marginBottom: 12,
+              }}>
+                {opt.swatches.map((color, i) => (
+                  <div
+                    key={i}
+                    title={color}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      background: color,
+                      border: color === '#ffffff' ? '1px solid #d0d5dd' : 'none',
+                      flexShrink: 0,
+                    }}
+                  />
+                ))}
               </div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                {opt.label} {theme === opt.id && '✓'}
+
+              <div style={{ fontWeight: 650, fontSize: '0.9rem', marginBottom: 2 }}>
+                {opt.label}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#4b5563', marginTop: 2 }}>
-                {themePreview(opt.id)}
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
+                {opt.desc}
               </div>
             </button>
           ))}

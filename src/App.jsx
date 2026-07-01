@@ -39,7 +39,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('finapp_theme') || 'minimal';
+    return localStorage.getItem('finapp_theme') || 'cloud';
   });
 
   // Apply theme to document

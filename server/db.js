@@ -174,7 +174,7 @@ function migrate(db) {
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       sync_interval_hours INTEGER DEFAULT 2,
-      ui_theme TEXT DEFAULT 'minimal',
+      ui_theme TEXT DEFAULT 'cloud',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
@@ -182,7 +182,7 @@ function migrate(db) {
   // Add ui_theme column if missing (for existing DBs)
   const settingsCols = db.prepare("PRAGMA table_info(user_settings)").all();
   if (!settingsCols.some(c => c.name === 'ui_theme')) {
-    db.exec("ALTER TABLE user_settings ADD COLUMN ui_theme TEXT DEFAULT 'minimal'");
+    db.exec("ALTER TABLE user_settings ADD COLUMN ui_theme TEXT DEFAULT 'cloud'");
   }
 
   // Per-user email summary settings
