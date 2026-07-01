@@ -28,7 +28,8 @@
     "pdf-parse": "^2.4.5",
     "resend": "^6.16.0",
     "sharp": "^0.33.5",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.4.1",

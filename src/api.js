@@ -162,4 +162,26 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+
+  // Backup
+  downloadBackup: async () => {
+    const res = await fetch(`${BASE}/backup/download`, {
+      headers: { 'Authorization': `Bearer ${authToken || ''}` },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = res.headers.get('Content-Disposition');
+    const match = disposition && disposition.match(/filename="?(.+?)"?$/);
+    a.download = match ? match[1] : `simplefin-backup-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };

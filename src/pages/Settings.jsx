@@ -502,6 +502,22 @@ export default function Settings({ setTheme }) {
         </button>
       </div>
 
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <h2>Backup</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>
+          Download your data as an Excel file with separate sheets for accounts, categories, and transactions.
+        </p>
+        <button type="button" className="primary" onClick={async () => {
+          try {
+            await api.downloadBackup();
+          } catch (err) {
+            setError(err.message);
+          }
+        }}>
+          Download Backup (.xlsx)
+        </button>
+      </div>
       <div className="card" style={{ marginTop: 24 }}>
         <h2>Email Summary</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>
