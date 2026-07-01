@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
 import PieChart from '../components/PieChart.jsx';
+import WelcomePopup from '../components/WelcomePopup.jsx';
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -14,6 +15,9 @@ export default function Dashboard() {
   const [pendingStart, setPendingStart] = useState('');
   const [pendingEnd, setPendingEnd] = useState('');
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
+  // Onboarding popup state
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [checkingConnections, setCheckingConnections] = useState(true);
 
   useEffect(() => {
     api.getUncategorizedCount().then(d => setUncategorizedCount(d.count)).catch(() => {});
@@ -32,13 +36,41 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [period, customStart, customEnd]);
 
+  // Onboarding: show welcome popup for new users with no bank connections.
+  // Skip if user has permanently dismissed it (localStorage flag).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setCheckingConnections(true);
+      setShowWelcome(false);
+      try {
+        const connections = await api.getConnections();
+        if (cancelled) return;
+        let dismissed = false;
+        try { dismissed = localStorage.getItem('finapp_onboarding_dismissed') === 'true'; } catch {}
+        if (connections.length === 0 && !dismissed) {
+          setShowWelcome(true);
+        }
+      } catch {
+        if (!cancelled) setShowWelcome(false);
+      } finally {
+        if (!cancelled) setCheckingConnections(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const applyFilters = () => {
     setPeriod(pendingPeriod);
     setCustomStart(pendingStart);
     setCustomEnd(pendingEnd);
   };
 
-  if (loading && !data) return <div className="empty-state"><p><span className="spinner" /> Loading...</p></div>;
+  // Wait for both the dashboard data and the connections check before showing
+  // anything. Prevents the popup from flashing over the loading spinner.
+  if ((loading && !data) || checkingConnections) {
+    return <div className="empty-state"><p><span className="spinner" /> Loading...</p></div>;
+  }
   if (error) return <div className="empty-state"><p className="error-message">{error}</p></div>;
   if (!data) return null;
 
@@ -189,6 +221,15 @@ export default function Dashboard() {
           </table>
         )}
       </div>
+
+      <WelcomePopup
+        isOpen={showWelcome}
+        onClose={() => setShowWelcome(false)}
+        onDismissForever={() => {
+          try { localStorage.setItem('finapp_onboarding_dismissed', 'true'); } catch {}
+          setShowWelcome(false);
+        }}
+      />
     </div>
   );
 }
