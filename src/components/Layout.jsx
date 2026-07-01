@@ -18,7 +18,7 @@ export default function Layout({ children, currentPage, onNavigate, user, onLogo
       <nav>
         <a href="#/dashboard" className="logo"
            onClick={e => { e.preventDefault(); onNavigate('dashboard'); }}>
-          FinApp
+          Simple Finance Client
         </a>
         {navItems.map(({ key, label }) => (
           <a key={key} href={`#/${key}`}

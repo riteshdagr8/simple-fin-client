@@ -3,18 +3,18 @@ import { useEffect, useRef } from 'react';
 const STEPS = [
   {
     icon: '🔑',
-    title: 'Get your SimpleFIN token',
-    text: 'Visit the SimpleFIN Bridge, create a new token, and copy it to your clipboard.',
+    title: 'Add connections to your bank accounts',
+    text: 'Visit the SimpleFin Bridge website (https://beta-bridge.simplefin.org/), add connections to your bank accounts.',
   },
   {
     icon: '🔌',
-    title: 'Add a connection',
-    text: 'Go to Connections, paste your token, give it a name, and save it.',
+    title: 'Create a new token',
+    text: 'Create a new token on the SimpleFin Bridge website, and copy to your clipboard.',
   },
   {
     icon: '⏳',
     title: 'Wait for the first sync',
-    text: 'FinApp will automatically fetch your accounts and recent transactions.',
+    text: 'Simple Finance Client will automatically fetch your accounts and recent transactions.',
   },
   {
     icon: '🏷️',
@@ -71,7 +71,7 @@ export default function WelcomePopup({ isOpen, onClose, onDismissForever }) {
           ×
         </button>
 
-        <h2 id="welcome-title">Welcome to FinApp</h2>
+        <h2 id="welcome-title">Welcome to Simple Finance Client</h2>
         <p className="welcome-subtitle">
           Let&apos;s get your first bank connection set up in four simple steps.
         </p>

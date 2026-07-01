@@ -27,7 +27,7 @@ export default function Register({ onLogin }) {
       <div className="card" style={{ width: 360 }}>
         <h1 style={{ marginBottom: 8 }}>Create Account</h1>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: '0.875rem' }}>
-          Join FinApp to track your finances
+          Join Simple Finance Client to track your finances
         </p>
         {error && <div className="error-message">{error}</div>}
         <form onSubmit={handleSubmit}>
