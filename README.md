@@ -38,11 +38,22 @@ A personal finance manager built with React and Express, powered by [SimpleFIN](
 - Re-match and re-extract buttons for retrying failed extractions
 - Receipt file cleanup — auto-delete matched receipts after 3 months; manual delete per receipt
 
+### Appearance
+- 8 color themes to choose from: Emerald Prestige, Midnight Indigo, Charcoal & Ember, Noir & Gold, Cloud White, Ocean Deep, plus legacy Minimal and Colorful
+- Themes apply instantly with CSS custom properties — light and dark options available
+- Theme selection persists across sessions (stored server-side and in localStorage)
+
+### Local Backup
+- Download all your data as a readable Excel file (.xlsx) with separate sheets for Accounts, Categories, and Transactions
+- One-click download from the Settings page
+
 ### Settings
 - LLM configuration — provider, API key, model, base URL
 - Vision model override — manually enable/disable image input for any model
 - Sync interval — configurable per-user (1-24 hours)
 - Email summaries — daily/weekly balance and transaction reports
+- 8 color themes — instant CSS custom property swap
+- One-click Excel backup of all financial data
 
 ### Security
 - JWT authentication with bcrypt passwords (Authorization header only — no token-in-URL)
@@ -118,6 +129,16 @@ npm run build
 npm start
 ```
 
+### Docker
+
+```bash
+docker compose up -d
+```
+
+Requires Docker Desktop. Mounts `.env` for secrets and `./data/` for persistent database and receipts.
+
+- App: http://localhost:4200
+
 ## Project Structure
 
 ```
@@ -144,7 +165,7 @@ npm start
 │       ├── rules.js          # Categorization rules
 │       ├── receipts.js       # Receipt upload, match, delete, file serving
 │       ├── settings.js       # LLM, sync, email summary settings
-│       └── dashboard.js      # Dashboard summary
+│       └── backup.js          # Excel backup download
 ├── src/
 │   ├── App.jsx               # React router setup
 │   ├── api.js                # API client
@@ -209,7 +230,16 @@ npm start
 |--------|------|------|-------------|
 | GET | `/api/settings/llm` | Yes | Get LLM configuration |
 | PUT | `/api/settings/llm` | Yes | Save LLM configuration |
-| POST | `/api/settings/llm/check` | Yes | Test LLM connection |
+| GET | `/api/settings/sync` | Yes | Get sync settings + current theme |
+| PUT | `/api/settings/sync` | Yes | Save sync interval and theme |
+| GET | `/api/settings/email-summary` | Yes | Get email summary config |
+| PUT | `/api/settings/email-summary` | Yes | Save email summary config |
+|
+
+### Backup
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/backup/download` | Yes | Download Excel backup (Accounts, Categories, Transactions sheets) |
 
 ## Receipt Processing Pipeline
 
