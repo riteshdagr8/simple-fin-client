@@ -230,11 +230,11 @@ Requires Docker Desktop. Mounts `.env` for secrets and `./data/` for persistent 
 |--------|------|------|-------------|
 | GET | `/api/settings/llm` | Yes | Get LLM configuration |
 | PUT | `/api/settings/llm` | Yes | Save LLM configuration |
+| POST | `/api/settings/llm/check` | Yes | Test LLM connection |
 | GET | `/api/settings/sync` | Yes | Get sync settings + current theme |
 | PUT | `/api/settings/sync` | Yes | Save sync interval and theme |
 | GET | `/api/settings/email-summary` | Yes | Get email summary config |
 | PUT | `/api/settings/email-summary` | Yes | Save email summary config |
-|
 
 ### Backup
 | Method | Path | Auth | Description |
