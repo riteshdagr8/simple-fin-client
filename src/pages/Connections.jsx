@@ -112,7 +112,7 @@ export default function Connections() {
     setResetDialog({ open: false, connectionId: null });
     try {
       await api.resetConnection(id);
-      loadConnections();
+      fetchConnections();
     } catch (err) {
       alert(err.message);
     }

@@ -4,13 +4,36 @@ import { buildPatternsForCategory, applyRulesToTransactions, descriptionMatchesP
 
 const router = Router();
 
+// Verify a list of account IDs all belong to the user. Returns the JSON
+// payload to store, or an { error } object if any ID is not owned by the user.
+function validateAccountIds(db, userId, accountIds) {
+  if (accountIds === 'all' || !accountIds) return { value: 'all' };
+  if (!Array.isArray(accountIds) || accountIds.length === 0) return { value: 'all' };
+  const ids = [];
+  for (const raw of accountIds) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) return { error: 'account_ids must contain valid positive IDs' };
+    if (!ids.includes(n)) ids.push(n);
+  }
+  if (ids.length === 0) return { value: 'all' };
+  const owned = new Set(db.prepare(`
+    SELECT a.id FROM accounts a
+    JOIN connections c ON c.id = a.connection_id
+    WHERE a.id IN (${ids.map(() => '?').join(',')}) AND c.user_id = ?
+  `).all(...ids, userId).map(r => r.id));
+  const foreign = ids.filter(id => !owned.has(id));
+  if (foreign.length > 0) return { error: `Account(s) not found: ${foreign.join(', ')}` };
+  return { value: JSON.stringify(ids) };
+}
+
 // List all rules for current user
 router.get('/', (req, res) => {
   const db = getDb();
   const rules = db.prepare(`
     SELECT cr.*, c.name as category_name, c.icon as category_icon, c.color as category_color
     FROM category_rules cr
-    JOIN categories c ON c.id = cr.category_id
+    JOIN categories c ON c.id = cr.category_id AND c.user_id = cr.user_id
     WHERE cr.user_id = ?
     ORDER BY cr.priority DESC, cr.id ASC
   `).all(req.user.userId);
@@ -60,9 +83,10 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'match_text is required for keyword rules' });
   }
 
-  const accountIdsJson = account_ids === 'all' || !account_ids
-    ? 'all'
-    : JSON.stringify(account_ids);
+  // Validate any account scoping against the user's own accounts
+  const accountCheck = validateAccountIds(db, req.user.userId, account_ids);
+  if (accountCheck.error) return res.status(400).json({ error: accountCheck.error });
+  const accountIdsJson = accountCheck.value;
 
   const result = db.prepare(`
     INSERT INTO category_rules (user_id, category_id, rule_type, match_text, account_ids, patterns, pattern_threshold, priority, enabled)
@@ -95,9 +119,14 @@ router.put('/:id', (req, res) => {
     if (!cat) return res.status(404).json({ error: 'Category not found' });
   }
 
-  const accountIdsJson = account_ids === 'all' || !account_ids
-    ? 'all'
-    : JSON.stringify(account_ids);
+  // Validate any account scoping against the user's own accounts (only when
+  // account_ids is actually being changed; omit it to leave the stored value).
+  let accountIdsJson = null;
+  if (account_ids !== undefined) {
+    const accountCheck = validateAccountIds(db, req.user.userId, account_ids);
+    if (accountCheck.error) return res.status(400).json({ error: accountCheck.error });
+    accountIdsJson = accountCheck.value;
+  }
 
   db.prepare(`
     UPDATE category_rules SET

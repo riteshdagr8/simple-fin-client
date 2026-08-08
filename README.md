@@ -102,27 +102,62 @@ Required environment variables:
 | `RESEND_FROM` | Email sender address (e.g., `FinApp <noreply@yourdomain.com>`) |
 | `APP_URL` | Your app URL for email links (e.g., `http://localhost:4200`) |
 
-### Running
+### Running in development
+
+The repository includes platform-specific scripts that start both the Express API and Vite frontend. Make sure dependencies are installed and `.env` is configured first.
+
+**Windows (Command Prompt or PowerShell):**
+
+```bat
+start.cmd
+stop.cmd
+```
+
+**macOS/Linux/Unix:**
+
+```bash
+chmod +x start.sh stop.sh
+./start.sh
+./stop.sh
+```
+
+The start scripts run `npm run dev`, save runtime state under `.run/`, and set the API port to `4200` so it matches the Vite proxy.
+
+**Windows:** `start.cmd` launches the dev server **in the background** (no console window) and returns you to the command prompt immediately. Logs go to `.run\dev.log` (errors to `.run\dev-error.log`). Run `stop.cmd` to stop it. If you run the `.sh` scripts from Git Bash on Windows, they detect the platform and hand off to the `.cmd` scripts automatically.
+
+**macOS/Linux/Unix:** `start.sh` runs the dev server in the background and returns; `stop.sh` stops it (SIGINT first so the app checkpoints SQLite, then escalating to TERM/KILL if needed).
+
+- Frontend: http://localhost:6173
+- API: http://localhost:4200
+- Runtime state and logs: `.run/`
+
+You can also run the development command directly in the foreground:
 
 ```bash
 npm run dev
 ```
 
-- Frontend: http://localhost:6173 (proxied through Express in development)
-- API: http://localhost:4200
+Stop it with `Ctrl+C` in the terminal where it is running.
 
 ### Production
+
+Build the frontend, then start the Express server:
 
 ```bash
 npm run build
 npm start
 ```
 
+In production, the server listens on `PORT` from `.env` (or port `3000` if unset) and serves the built frontend and API from the same origin.
+
+Stop production mode with `Ctrl+C` so the server can checkpoint SQLite and close cleanly.
+
 ## Project Structure
 
 ```
 ├── server/
-│   ├── index.js              # Express entry point
+│   ├── index.js              # Express entry point (bootstrap: secrets, listen, shutdown)
+│   ├── app.js                # Express app construction (imported by tests too)
 │   ├── db.js                 # SQLite database setup + migrations
 │   ├── crypto.js             # AES-256-GCM encryption utilities
 │   ├── email.js              # Resend email integration
@@ -160,6 +195,24 @@ npm start
 │       └── ConfirmDialog.jsx # Reusable confirmation modal
 └── vite.config.js
 ```
+
+## Testing
+
+```bash
+npm test
+```
+
+Runs the Node built-in test runner against an ephemeral SQLite database and
+HTTP server. The suites cover authentication (register, login, JWT
+invalidation on password change, unauthenticated access) and cross-user data
+isolation (a two-user matrix asserting every route scopes by owner).
+
+## Architecture note
+
+The current codebase is a **single-instance, shared-SQLite** application that
+issues local HMAC JWTs. `docs/hybrid-auth-design.md` describes a future
+central-auth-service + per-user-database architecture; it is **not
+implemented**. See the banner at the top of that document.
 
 ## API Endpoints
 

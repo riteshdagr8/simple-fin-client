@@ -7,7 +7,9 @@ import { getDb } from '../db.js';
 import { processReceiptFile, findMatchingTransactions, matchReceiptWithLLM } from '../receipt-processor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RECEIPTS_DIR = path.join(__dirname, '..', '..', 'data', 'receipts');
+const RECEIPTS_DIR = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, 'receipts')
+  : path.join(__dirname, '..', '..', 'data', 'receipts');
 
 // Ensure receipts directory exists
 if (!fs.existsSync(RECEIPTS_DIR)) {
@@ -85,25 +87,32 @@ const router = Router();
 router.get('/', (req, res) => {
   const db = getDb();
   const receipts = db.prepare(`
-    SELECT r.*,
-           t.amount as txn_amount,
-           t.description as txn_description,
-           t.posted as txn_posted
-    FROM receipts r
-    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    ${RECEIPT_TXN_SELECT}
     WHERE r.user_id = ?
     ORDER BY r.uploaded_at DESC
   `).all(req.user.userId);
   res.json(receipts);
 });
 
+// Select transaction columns only when the matched transaction is owned by the
+// receipt's owner. Defense-in-depth: normal flow already verifies ownership at
+// match time, but this prevents leaking another user's transaction data if an
+// inconsistent cross-user match ever exists in the DB.
+const RECEIPT_TXN_SELECT = `
+  SELECT r.*,
+         CASE WHEN c.user_id = r.user_id THEN t.amount ELSE NULL END as txn_amount,
+         CASE WHEN c.user_id = r.user_id THEN t.description ELSE NULL END as txn_description,
+         CASE WHEN c.user_id = r.user_id THEN t.posted ELSE NULL END as txn_posted
+  FROM receipts r
+  LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+  LEFT JOIN accounts a ON a.id = t.account_id
+  LEFT JOIN connections c ON c.id = a.connection_id`;
+
 // Get a single receipt + candidate transactions for matching
 router.get('/:id', (req, res) => {
   const db = getDb();
   const receipt = db.prepare(`
-    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
-    FROM receipts r
-    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    ${RECEIPT_TXN_SELECT}
     WHERE r.id = ? AND r.user_id = ?
   `).get(req.params.id, req.user.userId);
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
@@ -260,9 +269,7 @@ router.post('/:id/rematch', async (req, res) => {
   `).run(matchedTransactionId, matchScore, matchedTransactionId, receipt.id);
 
   const updated = db.prepare(`
-    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
-    FROM receipts r
-    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    ${RECEIPT_TXN_SELECT}
     WHERE r.id = ? AND r.user_id = ?
   `).get(req.params.id, req.user.userId);
 
@@ -297,9 +304,7 @@ router.post('/:id/match', (req, res) => {
     .run(transaction_id, req.params.id);
 
   const updated = db.prepare(`
-    SELECT r.*, t.amount as txn_amount, t.description as txn_description, t.posted as txn_posted
-    FROM receipts r
-    LEFT JOIN transactions t ON t.id = r.matched_transaction_id
+    ${RECEIPT_TXN_SELECT}
     WHERE r.id = ? AND r.user_id = ?
   `).get(req.params.id, req.user.userId);
 

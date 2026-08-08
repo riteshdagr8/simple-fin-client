@@ -199,9 +199,9 @@ Categories: ${categories.map(c => c.name).join(', ')}`;
     { role: 'user', content: userPrompt },
   ]);
 
-  // Log the raw response for debugging
+  // Log only the response length, never the raw content — LLM responses can
+  // contain transaction descriptions and merchant names.
   console.log(`[LLM] Response length: ${content.length} chars`);
-  console.log(`[LLM] First 500 chars: ${content.slice(0, 500)}`);
 
   if (!content || content.trim() === '') {
     const config = await getUserConfig(userId);
@@ -263,7 +263,7 @@ Categories: ${categories.map(c => c.name).join(', ')}`;
   if (!parsed) {
     throw new Error(
       `Failed to parse LLM response. The model did not return category names per line ` +
-      `and no JSON array was found. Raw (first 300 chars): ${content.slice(0, 300)}`
+      `and no JSON array was found.`
     );
   }
 

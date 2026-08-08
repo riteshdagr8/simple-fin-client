@@ -11,9 +11,9 @@ const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 // reset tokens would travel in plaintext over the wire. (For dev/local use the
 // http://localhost default is fine.)
 if (process.env.NODE_ENV === 'production' && APP_URL.startsWith('http://')) {
-  console.warn(
-    '[EMAIL] WARNING: APP_URL is using http:// in production. ' +
-    'Password-reset and email-verification tokens will be sent in plaintext. ' +
+  throw new Error(
+    '[EMAIL] APP_URL is using http:// in production. ' +
+    'Password-reset and email-verification tokens would be sent in plaintext. ' +
     'Set APP_URL to an https:// URL.'
   );
 }

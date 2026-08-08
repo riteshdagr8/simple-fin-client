@@ -317,11 +317,13 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
         SELECT t.id, t.description, t.amount, t.posted, t.account_id
         FROM transactions t
         JOIN accounts a ON a.id = t.account_id
+        JOIN connections c ON c.id = a.connection_id
         LEFT JOIN transaction_categories tc ON tc.transaction_id = t.id
         WHERE a.connection_id = ?
+          AND c.user_id = ?
           AND tc.id IS NULL
           AND t.created_at >= ?
-      `).all(connectionId, syncStartedAt);
+      `).all(connectionId, userId, syncStartedAt);
 
       if (newTxns.length > 0) {
         const matches = applyRulesToTransactions(userId, newTxns);

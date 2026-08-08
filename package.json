@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "concurrently --names \"EXPRESS,VITE\" --prefix-colors \"cyan,green\" \"cross-env NODE_ENV=development node server/index.js\" \"vite --port 6173\"",
     "build": "vite build",
-    "start": "cross-env NODE_ENV=production node server/index.js"
+    "start": "cross-env NODE_ENV=production node server/index.js",
+    "test": "node --test test/auth.test.js test/isolation.test.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -31,8 +33,13 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^10.0.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.9.0",
     "http-proxy-middleware": "^4.1.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

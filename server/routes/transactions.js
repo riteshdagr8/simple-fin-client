@@ -100,6 +100,13 @@ router.post('/:id/categorize', (req, res) => {
 
   if (!txn) return res.status(404).json({ error: 'Transaction not found' });
 
+  // Verify the target category belongs to this user too — otherwise a user
+  // could link their transaction to another user's category (cross-user
+  // reference that leaks into category joins downstream).
+  const cat = db.prepare('SELECT id FROM categories WHERE id = ? AND user_id = ?')
+    .get(categoryId, req.user.userId);
+  if (!cat) return res.status(404).json({ error: 'Category not found' });
+
   // Upsert
   db.prepare(`
     INSERT INTO transaction_categories (transaction_id, category_id, source, confidence)
@@ -364,6 +371,16 @@ async function runCategorizeJob(jobId, userId, options) {
     const categories = db.prepare('SELECT * FROM categories WHERE user_id = ? ORDER BY name').all(userId);
     const results = await categorizeTransactions(userId, txns, categories);
 
+    // LLM output is external/untrusted. Its category ids and transaction ids
+    // are supposed to be drawn from the scoped sets above, but verify before
+    // writing so a malformed/hostile response can never touch another user's
+    // rows (or rows outside this job's scope).
+    const ownedTxnIds = new Set(txns.map(t => t.id));
+    const ownedCategoryIds = new Set(categories.map(c => c.id));
+    const safeResults = results.filter(r =>
+      ownedTxnIds.has(r.txnId) && ownedCategoryIds.has(r.categoryId)
+    );
+
     const upsert = db.prepare(`
       INSERT INTO transaction_categories (transaction_id, category_id, source, confidence)
       VALUES (?, ?, 'llm', ?)
@@ -380,7 +397,7 @@ async function runCategorizeJob(jobId, userId, options) {
         processed++;
       }
     });
-    categorize(results);
+    categorize(safeResults);
 
     db.prepare(`
       UPDATE categorize_jobs

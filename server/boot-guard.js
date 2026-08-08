@@ -27,3 +27,16 @@ export function ensureSecret(name, defaultValue, allowDefault = false) {
     );
   }
 }
+
+// Minimum length for a secret. Short values are trivially brute-forceable even
+// when they aren't the literal default. `minLength` is in characters.
+export function ensureSecretLength(name, minLength) {
+  const value = process.env[name];
+  if (!value || value.length < minLength) {
+    throw new Error(
+      `\n\n${name} must be at least ${minLength} characters long (got ${value ? value.length : 0}).\n` +
+      `Generate a strong value: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"\n` +
+      `Update your .env file with the new value.\n`
+    );
+  }
+}

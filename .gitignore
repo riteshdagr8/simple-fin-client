@@ -10,7 +10,10 @@ start-vite.ps1
 eng.traineddata
 server.log
 data/receipts/
+.run/
 e2e-*.json
+e2e-token.txt
+code-review-report*.md
 test-*.js
 check-db.js
 reprocess-receipts.js

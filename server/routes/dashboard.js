@@ -67,7 +67,10 @@ router.get('/', (req, res) => {
     ORDER BY name
   `).all(uid);
 
-  // Spending by category (only includes transactions with a category)
+  // Spending by category (only includes transactions with a category).
+  // The transaction side is constrained to the current user's connections so a
+  // malformed/cross-user category reference can never aggregate someone else's
+  // transactions under this user's category.
   const categorySpending = db.prepare(`
     SELECT cat.id, cat.name, cat.icon, cat.color,
            COALESCE(SUM(t.amount), 0) as total
@@ -77,11 +80,13 @@ router.get('/', (req, res) => {
       AND t.amount < 0
       ${dateWhere}
     LEFT JOIN accounts a ON a.id = t.account_id
+    LEFT JOIN connections c ON c.id = a.connection_id
+      AND c.user_id = ?
     WHERE cat.user_id = ?
-      AND (a.id IS NULL OR (a.is_hidden IS NULL OR a.is_hidden = 0))
+      AND (a.id IS NULL OR (c.id IS NOT NULL AND (a.is_hidden IS NULL OR a.is_hidden = 0)))
     GROUP BY cat.id
     ORDER BY total ASC
-  `).all(uid, ...dateParams);
+  `).all(uid, uid, ...dateParams);
 
   // Total spend across ALL transactions (categorized + uncategorized)
   const periodSpend = db.prepare(`

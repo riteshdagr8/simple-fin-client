@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 import { encrypt, decrypt, maskValue } from '../crypto.js';
+import { THEME_IDS, DEFAULT_THEME } from '../../src/theme.js';
 
 const router = Router();
 
@@ -206,7 +207,7 @@ router.get('/sync', (req, res) => {
   const row = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(req.user.userId);
   res.json({
     sync_interval_hours: row?.sync_interval_hours || 2,
-    ui_theme: row?.ui_theme || 'minimal',
+    ui_theme: row?.ui_theme || DEFAULT_THEME,
   });
 });
 
@@ -221,8 +222,8 @@ router.put('/sync', (req, res) => {
     return res.status(400).json({ error: 'sync_interval_hours must be an integer between 1 and 24' });
   }
 
-  const validThemes = ['minimal', 'colorful'];
-  const theme = ui_theme !== undefined ? ui_theme : (current?.ui_theme || 'minimal');
+  const validThemes = THEME_IDS;
+  const theme = ui_theme !== undefined ? ui_theme : (current?.ui_theme || DEFAULT_THEME);
   if (!validThemes.includes(theme)) {
     return res.status(400).json({ error: `ui_theme must be one of: ${validThemes.join(', ')}` });
   }

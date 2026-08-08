@@ -196,9 +196,9 @@ export default function Receipts() {
   const formatScore = (score) => {
     if (score == null) return '';
     const pct = Math.round(score * 100);
-    if (pct >= 70) return { label: `${pct}%`, color: '#16a34a' };
-    if (pct >= 40) return { label: `${pct}%`, color: '#ca8a04' };
-    return { label: `${pct}%`, color: '#dc2626' };
+    if (pct >= 70) return { label: `${pct}%`, color: 'var(--success)' };
+    if (pct >= 40) return { label: `${pct}%`, color: 'var(--warning)' };
+    return { label: `${pct}%`, color: 'var(--danger)' };
   };
 
   if (loading) {
@@ -241,7 +241,7 @@ export default function Receipts() {
           {/* Receipt List */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {matched.length > 0 && (
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: '#f0fdf4', fontSize: '0.8rem', color: '#16a34a', fontWeight: 600 }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--success-bg)', fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>
                 {matched.length} matched
               </div>
             )}
@@ -260,7 +260,7 @@ export default function Receipts() {
                     display: 'flex', alignItems: 'center', gap: 12,
                   }}>
                   {isPdf(r) ? (
-                    <div style={{ width: 40, height: 40, borderRadius: 4, background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#dc2626' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger)' }}>
                       PDF
                     </div>
                   ) : (
@@ -274,7 +274,7 @@ export default function Receipts() {
                       {r.extracted_total != null && <span>${r.extracted_total.toFixed(2)}</span>}
                       {r.extracted_vendor && <span>· {r.extracted_vendor}</span>}
                       {r.extracted_date && <span>· {r.extracted_date}</span>}
-                      {r.matched_transaction_id && <span style={{ color: '#16a34a' }}>✓ Matched</span>}
+                      {r.matched_transaction_id && <span style={{ color: 'var(--success)' }}>✓ Matched</span>}
                       {score && <span style={{ color: score.color }}>{score.label}</span>}
                     </div>
                   </div>
@@ -295,7 +295,7 @@ export default function Receipts() {
               </div>
 
               {isPdf(selectedReceipt) ? (
-                <div style={{ padding: 24, background: '#f5f5f5', borderRadius: 'var(--radius)', textAlign: 'center' }}>
+                <div style={{ padding: 24, background: 'var(--surface-2)', borderRadius: 'var(--radius)', textAlign: 'center' }}>
                   <div style={{ fontSize: '2rem', marginBottom: 8 }}>📄</div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>PDF Receipt</div>
                   {detailUrl ? (
@@ -306,9 +306,9 @@ export default function Receipts() {
                 </div>
               ) : detailUrl ? (
                 <img src={detailUrl} alt="Receipt"
-                  style={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 'var(--radius)', background: '#f5f5f5' }} />
+                  style={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 'var(--radius)', background: 'var(--surface-2)' }} />
               ) : (
-                <div style={{ padding: 24, background: '#f5f5f5', borderRadius: 'var(--radius)', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <div style={{ padding: 24, background: 'var(--surface-2)', borderRadius: 'var(--radius)', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   Loading…
                 </div>
               )}

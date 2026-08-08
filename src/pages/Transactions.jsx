@@ -33,6 +33,7 @@ export default function Transactions() {
   const [categorizeJob, setCategorizeJob] = useState(null);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
   const [categorizeError, setCategorizeError] = useState('');
+  const [aiResult, setAiResult] = useState('');
 
   // AI scope controls
   const [aiScope, setAiScope] = useState('unassigned');
@@ -140,6 +141,7 @@ export default function Transactions() {
   const handleAI = async () => {
     setAiLoading(true);
     setCategorizeError('');
+    setAiResult('');
     try {
       const params = { scope: aiScope, limit: 200 };
       if (aiScope === 'date') {
@@ -245,6 +247,9 @@ export default function Transactions() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {categorizeError && (
             <span style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>{categorizeError}</span>
+          )}
+          {aiResult && (
+            <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{aiResult}</span>
           )}
           <select value={aiScope} onChange={e => setAiScope(e.target.value)} style={{ width: 'auto', minWidth: 160 }} title="Which transactions to include in the AI categorize job">
             <option value="unassigned">Unassigned only</option>

@@ -1,5 +1,13 @@
 # FinApp Hybrid Auth — Design Document
 
+> ## ⚠️ STATUS: PLANNED / NOT IMPLEMENTED
+>
+> This document describes a **future architecture** that is **not implemented** in the current codebase.
+>
+> The current application is a **single-instance, shared-SQLite** app (`finapp.db` for all users) that issues **local HMAC JWTs** (7-day expiry, no refresh tokens, no JWKS). Auth routes (`register`, `login`, `verify`, `forgot-password`, `reset-password`) live in `server/routes/auth.js`, and the `users` table lives in `server/db.js`.
+>
+> Do not assume RS256/JWKS verification, a central auth service, refresh tokens, or per-user databases are in place — none of that exists yet.
+
 ## Goals
 
 1. **Central user management** — single source of truth for who can use the app

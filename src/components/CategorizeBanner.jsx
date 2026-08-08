@@ -91,7 +91,7 @@ export default function CategorizeBanner({ job, onDismiss, onStartAnother, onRef
         className="card"
         style={{
           padding: 14, marginBottom: 16,
-          background: '#f0fdf4',
+          background: 'var(--success-bg)',
           borderColor: 'var(--success)',
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}
@@ -126,7 +126,7 @@ export default function CategorizeBanner({ job, onDismiss, onStartAnother, onRef
         className="card"
         style={{
           padding: 14, marginBottom: 16,
-          background: '#fef2f2',
+          background: 'var(--danger-bg)',
           borderColor: 'var(--danger)',
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}

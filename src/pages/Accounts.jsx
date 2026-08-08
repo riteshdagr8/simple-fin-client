@@ -245,7 +245,7 @@ export default function Accounts() {
           const errors = [];
           if (dateRaw == null || dateRaw === '') errors.push('missing date');
           if (descRaw == null || String(descRaw).trim() === '') errors.push('missing description');
-          if (amtRaw == null || amtRaw === '' || isNaN(parseAmount(String(amtRaw).replace(/[$,\s]/g, '')))) errors.push(`invalid amount: ${amtRaw}`);
+          if (amtRaw == null || amtRaw === '' || isNaN(Number(String(amtRaw).replace(/[$,\s]/g, '')))) errors.push(`invalid amount: ${amtRaw}`);
           if (errors.length) {
             invalid.push({ row: idx + 1, reason: errors.join(', '), date: dateRaw, desc: descRaw, amt: amtRaw });
             return;
@@ -559,7 +559,7 @@ export default function Accounts() {
                   padding: 14,
                   borderRadius: 'var(--radius)',
                   border: '1px solid var(--success)',
-                  background: '#f0fdf4',
+                  background: 'var(--success-bg)',
                   marginBottom: 16,
                   fontSize: '0.9rem',
                 }}

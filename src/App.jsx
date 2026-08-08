@@ -13,6 +13,7 @@ import Transactions from './pages/Transactions.jsx';
 import Categories from './pages/Categories.jsx';
 import Receipts from './pages/Receipts.jsx';
 import Settings from './pages/Settings.jsx';
+import { DEFAULT_THEME, resolveTheme } from './theme.js';
 
 export const AuthContext = createContext(null);
 
@@ -39,7 +40,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('finapp_theme') || 'minimal';
+    return resolveTheme(localStorage.getItem('finapp_theme')) || DEFAULT_THEME;
   });
 
   // Apply theme to document
@@ -70,7 +71,7 @@ export default function App() {
   useEffect(() => {
     if (user) {
       api.getSyncSettings()
-        .then(s => { if (s.ui_theme) setTheme(s.ui_theme); })
+        .then(s => { if (s.ui_theme) setTheme(resolveTheme(s.ui_theme)); })
         .catch(() => {});
     }
   }, [user]);

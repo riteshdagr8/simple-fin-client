@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
+import { THEMES, DEFAULT_THEME, resolveTheme } from '../theme.js';
 
 const PROVIDERS = [
   { id: 'openai',    label: 'OpenAI',         defaultUrl: 'https://api.openai.com/v1',         defaultModel: 'gpt-4o-mini' },
@@ -29,7 +30,7 @@ export default function Settings({ setTheme }) {
   const [syncSaving, setSyncSaving] = useState(false);
   const [syncSaved, setSyncSaved] = useState(false);
 
-  const [theme, setLocalTheme] = useState('minimal');
+  const [theme, setLocalTheme] = useState(DEFAULT_THEME);
 
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [emailFrequency, setEmailFrequency] = useState(6);
@@ -59,7 +60,7 @@ export default function Settings({ setTheme }) {
     api.getSyncSettings()
       .then(s => {
         setSyncInterval(s.sync_interval_hours || 2);
-        setLocalTheme(s.ui_theme || 'minimal');
+        setLocalTheme(resolveTheme(s.ui_theme) || DEFAULT_THEME);
       })
       .catch(() => {});
     api.getEmailSummarySettings()
@@ -180,11 +181,6 @@ export default function Settings({ setTheme }) {
     }
   };
 
-  const themePreview = (id) => ({
-    minimal: 'Subtle grays, sharp edges, focus on data.',
-    colorful: 'Vibrant gradients, rounded cards, expressive typography.',
-  })[id];
-
   if (loading) return <div className="empty-state"><p><span className="spinner" /> Loading...</p></div>;
 
   return (
@@ -200,7 +196,7 @@ export default function Settings({ setTheme }) {
 
         {error && <div className="error-message">{error}</div>}
         {saved && (
-          <div style={{ background: '#f0fdf4', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
+          <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
             Settings saved successfully!
           </div>
         )}
@@ -271,12 +267,12 @@ export default function Settings({ setTheme }) {
                     <span>Model supports vision (image input)</span>
                   </label>
                   {!isVision && model && (
-                    <p style={{ fontSize: '0.75rem', color: '#ca8a04', marginTop: 4, background: '#fef9c3', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: 4, background: 'var(--warning-bg)', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
                       Receipt extraction will use OCR text instead of images. Check the box above if your model actually supports vision.
                     </p>
                   )}
                   {isVision && !autoVision && (
-                    <p style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: 4, background: '#dbeafe', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--accent)', marginTop: 4, background: 'var(--info-bg)', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
                       Vision manually enabled for <strong>{model}</strong>. Images will be sent to the model for extraction.
                     </p>
                   )}
@@ -363,7 +359,7 @@ export default function Settings({ setTheme }) {
         </p>
 
         {syncSaved && (
-          <div style={{ background: '#f0fdf4', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
+          <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
             Sync settings saved!
           </div>
         )}
@@ -398,39 +394,44 @@ export default function Settings({ setTheme }) {
           Choose how the app looks. Changes apply immediately when you click Save.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          {[
-            { id: 'minimal', label: 'Modern Minimal', sample: { bg: '#f5f5f5', surface: '#ffffff', accent: '#2563eb' } },
-            { id: 'colorful', label: 'Bold Colorful', sample: { bg: 'linear-gradient(135deg, #fef3c7, #fce7f3, #dbeafe)', surface: '#ffffff', accent: 'linear-gradient(135deg, #7c3aed, #ec4899)' } },
-          ].map(opt => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setLocalTheme(opt.id)}
-              style={{
-                padding: 16,
-                border: theme === opt.id ? '2px solid var(--accent)' : '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                background: opt.sample.bg,
-                textAlign: 'left',
-                cursor: 'pointer',
-                color: '#1a1a1a',
-                boxShadow: theme === opt.id ? '0 0 0 3px var(--accent-soft)' : 'none',
-              }}
-            >
-              <div style={{ background: opt.sample.surface, padding: 8, borderRadius: 6, marginBottom: 8, border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div style={{ height: 6, width: 40, background: typeof opt.sample.accent === 'string' && opt.sample.accent.startsWith('linear') ? opt.sample.accent : opt.sample.accent, borderRadius: 3, marginBottom: 6 }} />
-                <div style={{ height: 4, width: '70%', background: '#e5e7eb', borderRadius: 2, marginBottom: 4 }} />
-                <div style={{ height: 4, width: '50%', background: '#e5e7eb', borderRadius: 2 }} />
-              </div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                {opt.label} {theme === opt.id && '✓'}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#4b5563', marginTop: 2 }}>
-                {themePreview(opt.id)}
-              </div>
-            </button>
-          ))}
+        <div className="palette-grid">
+          {THEMES.map(opt => {
+            const selected = theme === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setLocalTheme(opt.id)}
+                style={{
+                  padding: 16,
+                  border: selected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  background: 'var(--surface)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: 'var(--text)',
+                  boxShadow: selected ? '0 0 0 3px var(--accent-soft)' : 'none',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {opt.swatches.map(c => (
+                    <span key={c} style={{ width: 28, height: 28, borderRadius: 6, background: c, border: '1px solid var(--border)', display: 'inline-block' }} />
+                  ))}
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {opt.name}
+                  {selected && (
+                    <span style={{ color: 'var(--success)' }}>✓</span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  {opt.description}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <button type="button" className="primary" onClick={async () => {
@@ -453,7 +454,7 @@ export default function Settings({ setTheme }) {
         </p>
 
         {emailSaved && (
-          <div style={{ background: '#f0fdf4', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
+          <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '10px 14px', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: '0.85rem' }}>
             Email summary settings saved!
           </div>
         )}
