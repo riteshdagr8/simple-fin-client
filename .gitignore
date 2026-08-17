@@ -5,6 +5,10 @@ dist/
 *.db
 *.db-shm
 *.db-wal
+*.db.bak*
+*.db.emptypreserve*
+backups/
+.claude/
 start-express.ps1
 start-vite.ps1
 eng.traineddata
@@ -14,6 +18,7 @@ data/receipts/
 e2e-*.json
 e2e-token.txt
 code-review-report*.md
+code-review-findings.md
 test-*.js
 check-db.js
 reprocess-receipts.js

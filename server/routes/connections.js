@@ -346,6 +346,14 @@ export async function syncConnection(connectionId, userId, source = 'manual', lo
     } catch (ruleErr) {
       console.error('[RULES] Auto-apply failed:', ruleErr.message);
     }
+
+    // Auto-pair strong-signal transfers discovered by this sync.
+    try {
+      const { autoPairTransfers } = await import('../transfers.js');
+      if (totalTxns > 0) autoPairTransfers(db, userId);
+    } catch (transferErr) {
+      console.error('[TRANSFERS] Auto-pair after sync failed:', transferErr.message);
+    }
   } catch (err) {
     const failedAt = new Date().toISOString();
     const isReauth = err instanceof SimpleFinAuthError;

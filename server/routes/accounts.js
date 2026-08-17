@@ -196,7 +196,7 @@ router.get('/:id/transactions', (req, res) => {
   res.json({ transactions: txns, total: count.total });
 });
 
-router.post('/:id/transactions/import', (req, res) => {
+router.post('/:id/transactions/import', async (req, res) => {
   const db = getDb();
   const { rows } = req.body || {};
 
@@ -262,6 +262,16 @@ router.post('/:id/transactions/import', (req, res) => {
     }
   });
   insertAll(valid);
+
+  // Auto-pair strong-signal transfers among newly imported rows.
+  if (imported > 0) {
+    try {
+      const { autoPairTransfers } = await import('../transfers.js');
+      autoPairTransfers(db, req.user.userId);
+    } catch (transferErr) {
+      console.error('[TRANSFERS] Auto-pair after CSV import failed:', transferErr.message);
+    }
+  }
 
   const skipped = valid.length - imported;
   res.json({ imported, skipped, errors });

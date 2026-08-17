@@ -96,6 +96,22 @@ export const api = {
     request(`/transactions/categorize-jobs/${id}/dismiss`, { method: 'POST' }),
   getUncategorizedCount: () => request('/transactions/uncategorized-count'),
 
+  // Transfers
+  getTransferPairs: () => request('/transfers'),
+  getTransferCandidates: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => v !== undefined && v !== '' && qs.set(k, v));
+    return request(`/transfers/candidates${qs.toString() ? `?${qs}` : ''}`);
+  },
+  scanTransfers: (params = {}) =>
+    request('/transfers/scan', { method: 'POST', body: JSON.stringify(params) }),
+  createTransferPair: (debit_txn_id, credit_txn_id, matched_by = 'manual', notes = '') =>
+    request('/transfers/pairs', {
+      method: 'POST',
+      body: JSON.stringify({ debit_txn_id, credit_txn_id, matched_by, notes }),
+    }),
+  deleteTransferPair: (id) => request(`/transfers/pairs/${id}`, { method: 'DELETE' }),
+
   // Categories
   getCategories: () => request('/categories'),
   createCategory: (data) =>

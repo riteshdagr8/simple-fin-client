@@ -12,6 +12,7 @@ import Accounts from './pages/Accounts.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Categories from './pages/Categories.jsx';
 import Receipts from './pages/Receipts.jsx';
+import Transfers from './pages/Transfers.jsx';
 import Settings from './pages/Settings.jsx';
 import { DEFAULT_THEME, resolveTheme } from './theme.js';
 
@@ -24,6 +25,7 @@ const PAGES = {
   transactions: { component: Transactions },
   categories:   { component: Categories },
   receipts:     { component: Receipts },
+  transfers:    { component: Transfers },
   settings:     { component: Settings },
 };
 

@@ -246,3 +246,26 @@ export async function runReceiptFileCleanup() {
     console.log(`[RECEIPT-CLEANUP] Deleted ${deleted} receipt files older than 3 months.`);
   }
 }
+
+// --- Daily database backup scheduler ---
+
+let backupTask = null;
+
+export function initBackupScheduler() {
+  if (backupTask) {
+    backupTask.stop();
+  }
+  // Run once daily at 4 AM (after the receipt cleanup at 3 AM).
+  backupTask = cron.schedule('0 4 * * *', () => {
+    runBackup().catch(err => {
+      console.error('[BACKUP] Tick failed:', err.message);
+    });
+  });
+  console.log('Backup scheduler initialized: runs daily at 4 AM, keeps last 14 backups.');
+}
+
+export async function runBackup() {
+  const db = getDb();
+  const { backupDatabase } = await import('./backup.js');
+  return backupDatabase(db);
+}

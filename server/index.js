@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
-import { initScheduler, initEmailSummaryScheduler, initReceiptCleanupScheduler } from './scheduler.js';
+import { initScheduler, initEmailSummaryScheduler, initReceiptCleanupScheduler, initBackupScheduler } from './scheduler.js';
 import { ensureSecret, ensureSecretLength, DEFAULT_JWT_SECRET, DEFAULT_ENCRYPTION_KEY } from './boot-guard.js';
 
 // Security: fail fast on default / missing / weak secrets
@@ -18,6 +18,7 @@ const server = app.listen(PORT, () => {
   initScheduler();
   initEmailSummaryScheduler();
   initReceiptCleanupScheduler();
+  initBackupScheduler();
   import('./receipt-watch.js').then(({ initReceiptWatchers }) => {
     initReceiptWatchers();
   });

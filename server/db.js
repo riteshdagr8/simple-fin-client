@@ -1,11 +1,28 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { isProductionDb } from './db-guard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'finapp.db');
 
 let db;
+
+// Guard: test/dev servers must not silently open the production DB. A script
+// or test that forgets DB_PATH would otherwise wipe real data — refuse loudly.
+const NODE_ENV = process.env.NODE_ENV || 'development';
+if (NODE_ENV === 'test' && isProductionDb(DB_PATH)) {
+  throw new Error(
+    `[DB-GUARD] REFUSED to open the production database (${DB_PATH}) with ` +
+    `NODE_ENV=test. Tests must use a scratch DB — set DB_PATH to a temp path.`
+  );
+} else if (NODE_ENV !== 'production' && isProductionDb(DB_PATH)) {
+  console.warn(
+    `[DB-GUARD] WARNING: opening the production database (${DB_PATH}) with ` +
+    `NODE_ENV=${NODE_ENV}. This is only intended for real server runs. If you are ` +
+    `running one-off scripts, set DB_PATH to a scratch database.`
+  );
+}
 
 export function getDb() {
   if (!db) {
@@ -279,4 +296,23 @@ function migrate(db) {
   if (!llmCols.some(c => c.name === 'supports_vision')) {
     db.exec("ALTER TABLE user_llm_config ADD COLUMN supports_vision INTEGER DEFAULT NULL");
   }
+
+  // Transfer reconciliation — pairs of transactions between the user's own
+  // accounts that cancel out (excluded from spending totals).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS transfer_pairs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      debit_txn_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      credit_txn_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      matched_by TEXT NOT NULL DEFAULT 'manual' CHECK (matched_by IN ('auto', 'manual')),
+      matched_at TEXT NOT NULL DEFAULT (datetime('now')),
+      notes TEXT,
+      CHECK (debit_txn_id <> credit_txn_id)
+    );
+  `);
+  // A transaction can only ever be in one pair.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_transfer_pairs_debit ON transfer_pairs(debit_txn_id)`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_transfer_pairs_credit ON transfer_pairs(credit_txn_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_transfer_pairs_user ON transfer_pairs(user_id, matched_at DESC)`);
 }

@@ -71,6 +71,13 @@ router.get('/', (req, res) => {
   // The transaction side is constrained to the current user's connections so a
   // malformed/cross-user category reference can never aggregate someone else's
   // transactions under this user's category.
+  // Reconciled transfers (money moved between the user's own accounts) are not
+  // real spending — exclude both sides from category and total spending.
+  const transferExclusion = `NOT EXISTS (
+    SELECT 1 FROM transfer_pairs tp
+    WHERE tp.debit_txn_id = t.id OR tp.credit_txn_id = t.id
+  )`;
+
   const categorySpending = db.prepare(`
     SELECT cat.id, cat.name, cat.icon, cat.color,
            COALESCE(SUM(t.amount), 0) as total
@@ -78,6 +85,7 @@ router.get('/', (req, res) => {
     LEFT JOIN transaction_categories tc ON tc.category_id = cat.id
     LEFT JOIN transactions t ON t.id = tc.transaction_id
       AND t.amount < 0
+      AND ${transferExclusion}
       ${dateWhere}
     LEFT JOIN accounts a ON a.id = t.account_id
     LEFT JOIN connections c ON c.id = a.connection_id
@@ -96,6 +104,7 @@ router.get('/', (req, res) => {
     JOIN connections c ON c.id = a.connection_id
     WHERE c.user_id = ? AND t.amount < 0
       AND (a.is_hidden IS NULL OR a.is_hidden = 0)
+      AND ${transferExclusion}
       ${dateWhere}
   `).get(uid, ...dateParams);
 

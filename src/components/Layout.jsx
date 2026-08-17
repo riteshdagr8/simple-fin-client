@@ -6,6 +6,7 @@ export default function Layout({ children, currentPage, onNavigate, user, onLogo
   const navItems = [
     { key: 'dashboard',    label: 'Dashboard' },
     { key: 'transactions', label: 'Transactions' },
+    { key: 'transfers',    label: 'Transfers' },
     { key: 'accounts',     label: 'Accounts' },
     { key: 'connections',  label: 'Connections' },
     { key: 'categories',   label: 'Categories' },

@@ -20,6 +20,7 @@ export default function Transactions() {
   const [categoryId, setCategoryId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [period, setPeriod] = useState('all'); // all | current | last
   const [accounts, setAccounts] = useState([]);
   const [sortBy, setSortBy] = useState('posted');
   const [sortDir, setSortDir] = useState('desc');
@@ -54,6 +55,31 @@ export default function Transactions() {
       setSearch(value);
       setOffset(0);
     }, 300);
+  };
+
+  // YYYY-MM-DD in local time, matching <input type="date"> values.
+  const toISODate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const setPeriodFilter = (value) => {
+    setPeriod(value);
+    if (value === 'current') {
+      const now = new Date();
+      setStartDate(toISODate(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setEndDate(toISODate(now));
+    } else if (value === 'last') {
+      const now = new Date();
+      setStartDate(toISODate(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+      setEndDate(toISODate(new Date(now.getFullYear(), now.getMonth(), 0)));
+    } else {
+      setStartDate('');
+      setEndDate('');
+    }
+    setOffset(0);
   };
 
   const refreshJob = useCallback(() => {
@@ -328,17 +354,27 @@ export default function Transactions() {
               {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
             </select>
           </div>
-          <div className="form-group">
-            <label>Start Date</label>
-            <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setOffset(0); }} />
+          <div className="filters-row">
+            <div className="form-group">
+              <label>Period</label>
+              <select value={period} onChange={e => setPeriodFilter(e.target.value)}>
+                <option value="all">All dates</option>
+                <option value="current">Current month</option>
+                <option value="last">Last month</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Start Date</label>
+              <input type="date" value={startDate} onChange={e => { setPeriod('all'); setStartDate(e.target.value); setOffset(0); }} />
+            </div>
+            <div className="form-group">
+              <label>End Date</label>
+              <input type="date" value={endDate} onChange={e => { setPeriod('all'); setEndDate(e.target.value); setOffset(0); }} />
+            </div>
+            <button onClick={() => { setSearch(''); setBankName(''); setAccountId(''); setCategoryId(''); setPeriod('all'); setStartDate(''); setEndDate(''); setOffset(0); }}>
+              Clear
+            </button>
           </div>
-          <div className="form-group">
-            <label>End Date</label>
-            <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setOffset(0); }} />
-          </div>
-          <button onClick={() => { setSearch(''); setBankName(''); setAccountId(''); setCategoryId(''); setStartDate(''); setEndDate(''); setOffset(0); }}>
-            Clear
-          </button>
         </div>
       </div>
 

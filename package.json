@@ -7,7 +7,7 @@
     "dev": "concurrently --names \"EXPRESS,VITE\" --prefix-colors \"cyan,green\" \"cross-env NODE_ENV=development node server/index.js\" \"vite --port 6173\"",
     "build": "vite build",
     "start": "cross-env NODE_ENV=production node server/index.js",
-    "test": "node --test test/auth.test.js test/isolation.test.js",
+    "test": "node --test test/auth.test.js test/isolation.test.js test/receipt-image.test.js test/transfers.test.js",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -29,7 +29,7 @@
     "papaparse": "^5.4.1",
     "pdf-parse": "^2.4.5",
     "resend": "^6.16.0",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {

@@ -577,6 +577,15 @@ h2 { font-size: 1.15rem; margin-bottom: 12px; letter-spacing: -0.01em; }
   flex-wrap: wrap;
 }
 
+/* Second row of filters (Period + date range) — spans full width */
+.filters .filters-row {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+}
+
 .filters .form-group {
   margin-bottom: 0;
   min-width: 150px;
