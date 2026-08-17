@@ -25,7 +25,6 @@ export default function Layout({ children, currentPage, onNavigate, user, onLogo
           Simple Finance Client
         </a>
         <div className="header-actions">
-          <span className="header-user">{user?.name}</span>
           <div style={{ position: 'relative' }}>
             <button
               className="link"

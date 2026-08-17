@@ -219,10 +219,6 @@ body {
   white-space: nowrap;
 }
 
-.app-header .header-user {
-  color: var(--text-secondary);
-}
-
 .app-header a,
 .app-header button.link {
   color: var(--text-secondary);

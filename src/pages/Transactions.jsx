@@ -148,7 +148,7 @@ export default function Transactions() {
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
 
-    api.getTransactions(params)
+    return api.getTransactions(params)
       .then(data => {
         setTransactions(data.transactions);
         setTotal(data.total);
@@ -212,9 +212,13 @@ export default function Transactions() {
 
   const handleAssign = async (txnId, catId) => {
     setAssigningCat({ txnId, catId });
+    // Preserve scroll position across the reload so the view doesn't jump to top.
+    const scrollY = window.scrollY;
     try {
       await api.categorizeTransaction(txnId, catId);
-      loadTxns();
+      await loadTxns();
+      // Restore scroll after the list has re-rendered (next tick).
+      requestAnimationFrame(() => window.scrollTo(0, scrollY));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -248,13 +252,15 @@ export default function Transactions() {
     }
     setBulkAssigning(true);
     setError('');
+    const scrollY = window.scrollY;
     try {
       const ids = Array.from(selectedIds);
       const catId = clearInstead ? null : Number(bulkCategoryId);
       const res = await api.bulkCategorizeTransactions(ids, catId);
       setBulkCategoryId('');
       setSelectedIds(new Set());
-      loadTxns();
+      await loadTxns();
+      requestAnimationFrame(() => window.scrollTo(0, scrollY));
     } catch (err) {
       setError(err.message);
     } finally {
