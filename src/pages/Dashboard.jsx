@@ -14,14 +14,9 @@ export default function Dashboard() {
   const [pendingPeriod, setPendingPeriod] = useState('last30');
   const [pendingStart, setPendingStart] = useState('');
   const [pendingEnd, setPendingEnd] = useState('');
-  const [uncategorizedCount, setUncategorizedCount] = useState(0);
   // Onboarding popup state
   const [showWelcome, setShowWelcome] = useState(false);
   const [checkingConnections, setCheckingConnections] = useState(true);
-
-  useEffect(() => {
-    api.getUncategorizedCount().then(d => setUncategorizedCount(d.count)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -124,17 +119,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {uncategorizedCount > 0 && (
-          <div className="uncategorized-banner"
-               onClick={() => { window.location.hash = '#/transactions'; }}>
-            <span>📌</span>
-            <span>{uncategorizedCount} transaction{uncategorizedCount !== 1 ? 's' : ''} uncategorized</span>
-            <span style={{ opacity: 0.7 }}>→</span>
-          </div>
-        )}
-
         {visibleSpending.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No categorized spending in this period.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No spending in this period.</p>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 220px) 1fr', gap: 24, alignItems: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -144,7 +130,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div>
-              {visibleSpending.slice(0, 8).map(cat => {
+              {visibleSpending.map(cat => {
                 const pct = totalSpend > 0 ? (Math.abs(cat.total) / totalSpend) * 100 : 0;
                 return (
                   <div key={cat.id} style={{ marginBottom: 10 }}>
