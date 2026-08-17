@@ -96,6 +96,33 @@ router.get('/', (req, res) => {
     ORDER BY total ASC
   `).all(uid, uid, ...dateParams);
 
+  // Uncategorized spending — negative transactions in visible accounts with no
+  // category assigned. The pie/list otherwise only shows categorized amounts,
+  // which is why the category total never matches "Spent in period".
+  const uncategorizedSpending = db.prepare(`
+    SELECT COALESCE(SUM(t.amount), 0) as total
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    JOIN connections c ON c.id = a.connection_id
+    LEFT JOIN transaction_categories tc ON tc.transaction_id = t.id
+    WHERE c.user_id = ?
+      AND t.amount < 0
+      AND tc.id IS NULL
+      AND (a.is_hidden IS NULL OR a.is_hidden = 0)
+      AND ${transferExclusion}
+      ${dateWhere}
+  `).get(uid, ...dateParams);
+
+  if (uncategorizedSpending.total < 0) {
+    categorySpending.push({
+      id: 'uncategorized',
+      name: 'Uncategorized',
+      icon: '🏷️',
+      color: '#9ca3af',
+      total: uncategorizedSpending.total,
+    });
+  }
+
   // Total spend across ALL transactions (categorized + uncategorized)
   const periodSpend = db.prepare(`
     SELECT COALESCE(SUM(t.amount), 0) as total
