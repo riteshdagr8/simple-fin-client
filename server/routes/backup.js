@@ -1,10 +1,30 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const router = Router();
 
-router.get('/download', (req, res) => {
+// Add a rows array as a sheet, auto-sizing columns and adding a bold header.
+function addSheet(workbook, name, rows) {
+  const sheet = workbook.addWorksheet(name);
+  const headers = Object.keys(rows[0] || {});
+  sheet.addRow(headers);
+  sheet.getRow(1).font = { bold: true };
+  for (const row of rows) {
+    sheet.addRow(headers.map(h => row[h]));
+  }
+  // Auto-size columns for readability
+  headers.forEach((h, i) => {
+    let maxLen = h.length;
+    for (const row of rows) {
+      const v = row[h];
+      if (v !== undefined && v !== null) maxLen = Math.max(maxLen, String(v).length);
+    }
+    sheet.getColumn(i + 1).width = Math.min(maxLen + 3, 60);
+  });
+}
+
+router.get('/download', async (req, res) => {
   const db = getDb();
   const uid = req.user.userId;
 
@@ -42,36 +62,12 @@ router.get('/download', (req, res) => {
   `).all(uid);
 
   // Build workbook
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  addSheet(wb, 'Accounts', accounts);
+  addSheet(wb, 'Categories', categories);
+  addSheet(wb, 'Transactions', transactions);
 
-  const accSheet = XLSX.utils.json_to_sheet(accounts);
-  XLSX.utils.book_append_sheet(wb, accSheet, 'Accounts');
-
-  const catSheet = XLSX.utils.json_to_sheet(categories);
-  XLSX.utils.book_append_sheet(wb, catSheet, 'Categories');
-
-  const txnSheet = XLSX.utils.json_to_sheet(transactions);
-  XLSX.utils.book_append_sheet(wb, txnSheet, 'Transactions');
-
-  // Auto-size columns for readability
-  [accSheet, catSheet, txnSheet].forEach(sheet => {
-    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
-    const cols = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      let maxLen = 10;
-      for (let r = range.s.r; r <= range.e.r; r++) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        const cell = sheet[addr];
-        if (cell && cell.v !== undefined && cell.v !== null) {
-          maxLen = Math.max(maxLen, String(cell.v).length);
-        }
-      }
-      cols.push({ wch: Math.min(maxLen + 3, 60) });
-    }
-    sheet['!cols'] = cols;
-  });
-
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const buf = await wb.xlsx.writeBuffer();
 
   const date = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
