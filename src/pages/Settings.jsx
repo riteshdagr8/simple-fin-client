@@ -230,12 +230,6 @@ export default function Settings({ setTheme }) {
             <label>Model</label>
             <input type="text" value={model} onChange={e => setModel(e.target.value)}
               placeholder="e.g. gpt-4o-mini" />
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
-              {provider === 'openai' && 'Recommended: gpt-4o-mini (fast, cheap, accurate)'}
-              {provider === 'anthropic' && 'Recommended: claude-3-5-haiku-20241022 (fast, accurate)'}
-              {provider === 'openrouter' && 'Try: openai/gpt-4o-mini or anthropic/claude-3-haiku'}
-              {provider === 'custom' && 'Enter the model name your server uses (e.g. llama3, gpt-4o-mini)'}
-            </p>
           </div>
 
           <div className="form-group">
