@@ -30,7 +30,8 @@
     "pdf-parse": "^2.4.5",
     "resend": "^6.16.0",
     "sharp": "^0.35.3",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

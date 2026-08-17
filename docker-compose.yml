@@ -1,0 +1,13 @@
+services:
+  finapp:
+    build: .
+    ports:
+      - "4200:4200"
+    volumes:
+      # Mount .env for secrets (create from .env.example)
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=4200
+    restart: unless-stopped

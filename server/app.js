@@ -20,6 +20,7 @@ import settingsRouter from './routes/settings.js';
 import rulesRouter from './routes/rules.js';
 import receiptsRouter from './routes/receipts.js';
 import transfersRouter from './routes/transfers.js';
+import backupRouter from './routes/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,6 +84,7 @@ export function createApp() {
   app.use('/api/rules',         authMiddleware, rulesRouter);
   app.use('/api/receipts',      authMiddleware, receiptsRouter);
   app.use('/api/transfers',     authMiddleware, transfersRouter);
+  app.use('/api/backup',        authMiddleware, backupRouter);
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
