@@ -5,6 +5,7 @@ import { THEMES, DEFAULT_THEME, resolveTheme } from '../theme.js';
 const PROVIDERS = [
   { id: 'openai',    label: 'OpenAI',         defaultUrl: 'https://api.openai.com/v1',         defaultModel: 'gpt-4o-mini' },
   { id: 'anthropic', label: 'Claude (Anthropic)', defaultUrl: 'https://api.anthropic.com/v1',   defaultModel: 'claude-3-5-haiku-20241022' },
+  { id: 'gemini',    label: 'Google Gemini',  defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', defaultModel: 'gemini-2.0-flash' },
   { id: 'openrouter',label: 'OpenRouter',     defaultUrl: 'https://openrouter.ai/api/v1',       defaultModel: 'openai/gpt-4o-mini' },
   { id: 'custom',    label: 'Custom (OpenAI-compatible)', defaultUrl: '', defaultModel: '' },
 ];
